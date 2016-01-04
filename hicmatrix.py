@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Sep 28 14:15:22 2015
 
-@author: lyamovitch
-"""
 import numpy as np
 import warnings
 import hicstuff as hcs
@@ -15,8 +11,6 @@ try:
     basestring
 except NameError:
     basestring = str
-
-
 
 class HiCMatrix(object):
     """Constructs an Hi-C matrix object from various data formats.
@@ -201,10 +195,6 @@ class HiCMatrix(object):
         into the matrix attribute."""
         self.matrix, _ = matrix[1:,], matrix[0,:]
         
-        
-    def _init_from_hdf5(self, hdf5, *args, **kwargs):
-        return
-        
     def _init_from_sparse_coo_matrix(self, sparse, *args, **kwargs):
         
         if sparse[0].dtype is np.str_:
@@ -216,9 +206,6 @@ class HiCMatrix(object):
             print("I can't load a sparse matrix.")
             print(str(e))
         self.matrix = matrix
-            
-    def _init_from_hicbox_matrix(self, sparse, *args, **kwargs):
-        return
         
     def _init_GC(self):
         self.load_GC(self.genome)
@@ -251,8 +238,6 @@ class HiCMatrix(object):
         + 2*sum([sequence_count[i] for i in 'VvBb'])/3.0
         + sum([sequence_count[i] for i in 'NnYyRrKkMm'])/2.0
         return 0 or 100*gc
-            
-    
                 
     def _init_genome(self, genome, load_full=True):
         self.load_genome(genome, load_full)
@@ -427,27 +412,3 @@ class HiCMatrix(object):
         filename = self.name if filename is None else filename
         hcs.topdb(self.matrix,filename,self.contigs,self.annotations)
         print("Written to "+str(filename))
-        
-    
-if __name__ == "main":
-    print("M")
-    M = HiCMatrix("/home/romain/Bureau/figures/mat_saccer.dat",name="test")
-    print("slicing")
-    N = M[20:40]
-    print("reverse slicing")
-    O = M[40:20]
-    print("loading from file")
-    P = HiCMatrix("/home/romain/Bureau/figures/output_dade/3bact/matrix_3bact_bin10Kb.mat")
-    print("loading from file with genome")
-    Q = HiCMatrix("/home/romain/Bureau/figures/mat_saccer.dat",positions=1000,genome="/home/romain/Bureau/genomes/levures/cerevisiae.fa",GC=[])
-    print("loading from file and positions")
-    U = tuple((i*np.ones(M.size//9) for i in range(1,9)))+(9*np.ones(M.size - 8*M.size//9),)
-    print(U,len(U))
-    S = HiCMatrix("/home/romain/Bureau/figures/mat_saccer.dat",contigs=np.concatenate(U), name="test")
-    print("selecting contigs")
-    R = S[0]            
-    T = S[(1,2)]
-    path = "/home/romain/Bureau/Guillaume/SC2.0/"
-    A = HiCMatrix(path+"01_SynII.5k.rebinned")
-    B = HiCMatrix(path+"01_SynII.5k.rebinned.again")
-    C = HiCMatrix(path+"01_SynII.class.pp~mm~pm~mp~xc~filt.mat")
