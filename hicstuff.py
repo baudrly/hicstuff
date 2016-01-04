@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Sep 11 09:48:02 2015
 
-@author: lyamovitch
-"""
 import numpy as np
 import warnings
 import string
@@ -56,7 +52,7 @@ def bin_dense(M,subsampling_factor=3):
     else:
         print("Nothing to do.")
         O = N
-    
+        
     return O
     
 def bin_sparse(M,subsampling_factor=3):
@@ -95,12 +91,10 @@ def bin_matrix(M,subsampling_factor=3):
     try:
         from scipy.sparse import issparse
         if issparse(M):
-#            print("Sparse matrix detected: performing sparse binning.")
             return bin_sparse(M,subsampling_factor=subsampling_factor)
         else:
             raise ImportError
     except ImportError:
-#        print("Dense matrix detected: performing dense binning.")
         return bin_dense(M,subsampling_factor=subsampling_factor)
         
 def bin_annotation(annotation=None,subsampling_factor=3):
@@ -189,7 +183,6 @@ def bin_kb_sparse(M,positions,length=10):
     binned_indices = positions[[i for i in range(n-1) if np.ceil(units[i]) < np.ceil(units[i+1])]]
     return coo_matrix((r.data,(row,col))), binned_indices
     
-    
 def trim_dense(M, n_std=3, s_min=None, s_max=None):
     """By default, returns a matrix stripped of component vectors whose 
     sparsity (i.e. total contact count on a single column or row) deviates 
@@ -228,7 +221,6 @@ def trim_sparse(M, n_std=3, s_min=None,s_max=None):
     if s_max is None:
         s_max = mean+n_std*std
     f = (sparsity>s_min)*(sparsity<s_max)
-#    rows, cols = np.array([i for i in r.row if f[i]]), np.array([i for i in r.col if f[i]])
     indices = [u for u in range(len(r.data)) if f[r.row[u]] and f[r.col[u]]]
     rows = np.array([r.row[i] for i in indices])
     cols = np.array([r.col[j] for j in indices])
@@ -670,56 +662,3 @@ def pdb_to_structure(filename):
     for chain in structure.get_chains():
         atoms = [np.array(atom.get_coord()) for atom in structure.get_atoms()]   
     return atoms
-
-if __name__ == "main":
-    print("***** Testing dense binning. *****")
-    u = 245
-    arr = np.arange(u**2).reshape(u, u)
-    meas = np.array(range(28))
-    ann = np.array(range(0,28,-1))
-    print(build_pyramid(arr,subsampling_factor=4))
-    print(bin_measurement(meas))
-    print(bin_annotation(ann))
-    print("OK.")
-    print("***** Done testing dense binning. *****")
-    
-    print("***** Testing sparse binning. ***** ")
-    row = np.array([0, 0, 1, 3, 1, 0, 0, 8, 2, 5, 7, 28, 14, 3, 4, 8, 26,1])
-    col = np.array([0, 2, 1, 3, 1, 0, 0, 6, 8, 1, 0, 2, 4, 7, 26, 23, 7,28])
-    data = np.array([1, 1, 1, 1, 1, 1, 1, 4, 7, 1, 45, 1, 2, 3, 4, 15, 8,3])
-    from scipy.sparse import coo_matrix
-    V = coo_matrix((data, (row, col)), shape=(29,29))
-    S = V + V.T
-    print(S)
-    print(S.shape)
-    print(build_pyramid(S))
-    print("OK.")
-    print("***** Done testing sparse binning. *****")
-    
-    print("***** Testing normalizations. *****")
-    for nor in ["SCN","mirnylib","global","frag",lambda x:np.power(arr,0.3)]:
-        print(normalize_dense(build_pyramid(arr)[-4]*0.0001,norm=nor))
-        print(normalize_sparse(build_pyramid(S)[-4]*0.0001,norm=nor))
-    print("OK.")
-    print("***** Done testing normalizations. *****")
-    print("***** Testing kb binning. *****")
-    print("Nearest-frag kb binning:")
-    print(bin_kb_dense(arr,meas,length=26*10**(-4))[0])
-    print("OK.")
-    print("Exact kb binning:")
-    print(bin_exact_kb_dense(arr,meas,length=26*10**(-4)))
-    print("OK.")
-    print("***** Done testing kb binning. *****")
-    print("***** Testing trimming. *****")
-    print("Sparse trimming:")
-    print(trim_sparse(S))
-    print("OK.")
-    print("Dense trimming:")
-    print(trim_dense(S.todense()))
-    print("OK.")
-    print("Sparse/Dense consistent?")
-    print(trim_sparse(S).todense())
-    print("OK.")
-    print("***** Done testing trimming. *****")
-    print("***** Testing sparse kb binning. *****")
-    print(bin_kb_sparse(S,meas,length=26*10**(-4))[0])
