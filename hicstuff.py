@@ -423,8 +423,9 @@ def from_dade_matrix(filename, header=False):
     A = np.genfromtxt(filename, delimiter="\t", dtype=None)
     M, headers = np.array(A[1:,1:],dtype=np.float64), A[0]
     matrix = M + M.T - np.diag(np.diag(M))
+    parsed_header = list(zip(*[str(h)[:-1].strip('"').strip("'").split("~") for h in headers[1:]]))
     if header:
-        return matrix, headers
+        return matrix, parsed_header
     else:
         return matrix
     
