@@ -18,7 +18,7 @@ def despeckle(M, stds=2, width=2):
            std = np.std(square)
            if M[i,j] >= avg + stds*std:
                N[i,j] = avg
-   return N
+   return (N+N.T)/2
 
 def bin_dense(M,subsampling_factor=3):
     """Sums over each block of given subsampling factor, returns a matrix whose
@@ -243,7 +243,6 @@ def normalize_dense(M,norm="frag",order=1,iterations=3):
             sumcols = s.sum(axis=0)
             s[sumrow!=0][:,sumrow!=0] = s[sumrow!=0][:,sumrow!=0]/sumrow[sumrow!=0]
             s[sumcols!=0][:,sumcols!=0] = s[sumcols!=0][:,sumcols!=0]/sumcols[sumcols!=0]        
-        s = (s+s.T)/2
         
     elif norm == "mirnylib":
         try:        
@@ -272,7 +271,7 @@ def normalize_dense(M,norm="frag",order=1,iterations=3):
     else:
         print("I don't recognize this norm, I am returning input matrix by default.")
         
-    return s    
+    return (s+s.T)/2    
     
 def normalize_sparse(M,norm="frag",order=1,iterations=3):
     """Applies a normalization type to a sparse matrix."""
@@ -515,12 +514,13 @@ def to_structure(matrix, alpha=1, filename=None):
     connected = largest_connected_component(matrix)
     distances = to_distance(connected, alpha)
     n,m = connected.shape
-    bary = np.sum(np.triu(distances,1))/(n**2)
-    d = np.array(np.sum(distances**2,0)/n - bary)
+    bary = np.sum(np.triu(distances,1))/(n**2) #barycenters
+    d = np.array(np.sum(distances**2,0)/n - bary) #distances to origin
     gram = np.array([(d[i]+d[j]-distances[i][j]**2)/2 for i,j in itertools.product(range(n),range(m))]).reshape(n,m)
     normalized = gram/np.linalg.norm(gram,'fro')
+    symmetric = (normalized + normalized.T)/2 #just in case
     from scipy import linalg
-    eigen_values, eigen_vectors = linalg.eigh(normalized)
+    eigen_values, eigen_vectors = linalg.eigh(symmetric)
     idx = eigen_values.argsort()[-3:][::-1]
     values = eigen_values[idx]
     vectors = eigen_vectors[:,idx]
@@ -528,23 +528,25 @@ def to_structure(matrix, alpha=1, filename=None):
     return coordinates
     
 def get_missing_bins(original,trimmed):
-    md = np.diag(original)
-    nd = np.diag(trimmed)
+    """Retrieve indices of a trimmed matrix with respect to the original matrix.
+    Fairly fast but is only correct if diagonal values are different, which is
+    always the case in practice."""
+    original_diag = np.diag(original)
+    trimmed_diag = np.diag(trimmed)
     index = []
     m = min(original.shape)
-    for j in range(min(nd.shape)):
+    for j in range(min(trimmed.shape)):
         k = 0
-        while md[j+k] != nd[j] and k<2*m:
+        while original_diag[j+k] != trimmed_diag[j] and k<2*m:
             k+=1
         index.append(k+j)
     return np.array(index)
     
-    
-    
-def to_pdb(structure,filename,contigs=None,annotations=None,matrices=None):
+def to_pdb(structure,filename,contigs=None,annotations=None,indices=None):
     """From a structure (or matrix) generate the corresponding pdb file
     representing each chain as a contig/chromosome and filling the occupancy
-    field with a custom annotation.
+    field with a custom annotation. If the matrix has been trimmed somewhat,
+    remaining indices may be specified.
     """
     n = len(structure)
     letters = (string.ascii_uppercase+string.ascii_lowercase+string.digits+string.punctuation)*int(n/94 +1)
@@ -552,10 +554,8 @@ def to_pdb(structure,filename,contigs=None,annotations=None,matrices=None):
         contigs = np.ones(n+1)
     if annotations is None:
         annotations = np.zeros(n+1)
-    if matrices is None:
+    if indices is None:
         indices = range(n+1)
-    else:
-        indices = get_missing_bins(matrices[0],matrices[1])
 
     if isinstance(structure, np.ndarray) and structure.shape[0] == structure.shape[1]:
         structure = (to_structure(structure))
