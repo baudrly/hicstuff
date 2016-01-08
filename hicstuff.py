@@ -663,3 +663,65 @@ def pdb_to_structure(filename):
     for chain in structure.get_chains():
         atoms = [np.array(atom.get_coord()) for atom in structure.get_atoms()]   
     return atoms
+
+def noise(matrix):
+    D = shortest_path_interpolation(matrix,strict=True)
+    return np.random.poisson(lam=D)
+    
+def positions_to_contigs(positions):
+    
+    if isinstance(positions,np.ndarray):
+        flattened_positions = positions.flatten()
+    else:
+        try:
+            flattened_positions = [pos for contig in positions for pos in contig]
+        except TypeError:
+            flattened_positions = positions
+            
+    n = len(flattened_positions)
+    contigs = np.ones(n)
+    counter = 0
+    for i in range(1,n):
+        if positions[i] == 0:
+            counter += 1
+            contigs[i] += counter
+        else:
+            contigs[i] = contigs[i-1]
+    return contigs
+    
+def distance_diagonal_law(matrix, positions=None):
+    return np.array([np.average(np.diagonal(matrix,j)) for j in range(min(matrix.shape))])
+
+def null_model(matrix, positions=None, model="uniform", noisy=False):
+    n,m = matrix.shape
+    positions_supplied = True
+    if positions is None:
+        positions = range(n)
+        positions_supplied = False
+        
+    contigs = np.array(positions_to_contigs(positions))
+    
+    def is_inter(i,j):
+        return contigs[i] != contigs[j]
+    def is_intra(i,j):
+        return not is_inter(i,j)
+    
+    diagonal = np.diag(matrix)    
+    
+    if model == "uniform":
+        if positions_supplied:
+            trans_contacts = np.array([matrix[i,j] for i,j in itertools.product(range(n),range(m)) if is_inter(i,j)])
+            mean_trans_contacts = np.average(trans_contacts)
+        else:
+            mean_trans_contacts = np.average(matrix) - diagonal/len(diagonal)
+            
+        N = np.random.poisson(lam=mean_trans_contacts,size=(n,m))
+        np.fill_diagonal(N,diagonal)
+        
+    elif model == "distance":
+        distances = distance_diagonal_law(matrix)
+        N = np.array([[distances[min(abs(i-j),n)] for i in range(n)] for j in range(n)])
+    if noisy:
+        return noise(N)
+    else:
+        return N
