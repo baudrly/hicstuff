@@ -412,3 +412,26 @@ class HiCMatrix(object):
         filename = self.name if filename is None else filename
         hcs.topdb(self.matrix,filename,self.contigs,self.annotations)
         print("Written to "+str(filename))
+        
+    def trim(self, n_std=3, s_min=None, s_max=None, thresh):
+        
+        M = np.array(self.matrix)
+        sparsity = M.sum(axis=1)
+        mean = np.mean(sparsity)
+        std = np.std(sparsity)
+        if s_min is None:
+            s_min = mean-n_std*std
+        if s_max is None:
+            s_max = mean+n_std*std
+        elif s_max == 0:
+            s_max = np.amax(M)
+        f = (sparsity>s_min)*(sparsity<s_max) #trimming filter
+        new_matrix = M[f][:,f]
+        new_size = len(f)
+        new_annotations = {name:annotation[f] for key, annotation in self.annotations.items()}
+        new_contigs = self.contigs[f]
+        new_positions = self.contigs[f]
+        
+        return HiCMatrix(new_matrix, self.name, new_size, self.n_contigs, 
+                         self.genome, new_annotations, new_positions, new_contigs,
+                         self.level, new_GC, new_sparsity, new_structure)
