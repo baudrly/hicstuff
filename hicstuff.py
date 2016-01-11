@@ -722,7 +722,7 @@ def positions_to_contigs(positions):
             contigs[i] = contigs[i-1]
     return contigs
     
-def distance_diagonal_law(matrix, positions=None, intra_only=False):
+def distance_diagonal_law(matrix, positions=None):
     n = min(matrix.shape)
     if positions is None:
         return np.array([np.average(np.diagonal(matrix,j)) for j in range(n)])
@@ -746,18 +746,30 @@ def distance_diagonal_law(matrix, positions=None, intra_only=False):
 #                diagonal_inter.append(D[i])
 #        inter_contacts.append(np.average(np.array(diagonal_inter)))
         intra_contacts.append(np.average(np.array(diagonal_intra)))
-    
-    if not intra_only:
-        intra_contacts.extend(inter_contacts)
+        
+    intra_contacts.extend(inter_contacts)
     
     return [positions, np.array(intra_contacts)]
     
-def rippe_parameters(matrix, positions, init=None, circ=False):
-    measurements, bins = distance_diagonal_law(matrix,positions,intra_only=True)
-    parameters = estimate_param_rippe(measurements,bins,circ=circ)
+def rippe_parameters(matrix, positions, lengths=None, init=None, circ=False):
+    n,m = matrix.shape
+    
+    if lengths is None:
+        lengths = np.abs(np.diff(positions))
+    
+    measurements, bins = [],[]
+    for i in range(n):
+        for j in range(1,i):
+            mean_length = (lengths[i]+lengths[j])/2.
+            if positions[i] < positions[j]:
+                d = ((positions[j] - positions[i] - lengths[i]) + mean_length)/1000.
+            else:
+                d = ((positions[i] - positions[j] - lengths[j]) + mean_length)/1000.
+            bins.append(np.abs(d))
+            measurements.append(matrix[i,j])
+    parameters = estimate_param_rippe(measurements,bins,init=init,circ=circ)
     print(parameters)
     return parameters[0]
-    
     
 def estimate_param_rippe(measurements,bins,init=None,circ=False):
     
@@ -773,7 +785,7 @@ def estimate_param_rippe(measurements,bins,init=None,circ=False):
     
         return err
         
-    def peval(x, param, circ=False):
+    def peval(x, param):
         
         if circ:
             l_cont = x.max()
@@ -792,6 +804,7 @@ def estimate_param_rippe(measurements,bins,init=None,circ=False):
                     np.exp((d - 2) / ((np.power(s, 2) + d)))) * norm_lin / norm_circ
 
         else: 
+            
             rippe = param[3] * (0.53 * (param[0] ** -3.) * np.power((param[1] * x/param[0]), (param[2])) *
                     np.exp((d - 2) / ((np.power((param[1] * x / param[0]), 2) + d))))
                     
@@ -806,12 +819,12 @@ def estimate_param_rippe(measurements,bins,init=None,circ=False):
     from scipy.optimize import leastsq
     plsq = leastsq(log_residuals, p0, args=(np.log(measurements), bins))
     
-    y_estim = peval(bins, plsq[0], circ=circ)
+    y_estim = peval(bins, plsq[0])
     kuhn_x, lm_x, slope_x, A_x  = plsq[0]
     plsq_out = [kuhn_x, lm_x, slope_x, d, A_x]
 
     np_plsq = np.array(plsq_out)
-    # print "parameters from optimization = ", np_plsq
+
     if np.any(np.isnan(np_plsq)) or slope_x >= 0:
         warnings.warn("Problem in parameters estimation")
         plsq_out = p0
