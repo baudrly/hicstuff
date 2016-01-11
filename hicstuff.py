@@ -5,6 +5,7 @@ import warnings
 import string
 import collections
 import itertools
+from hicmatrix import HiCMatrix
 
 def despeckle(M, stds=2, width=2):
    """Replaces outstanding values (above stds standard deviations) in a matrix 
@@ -543,7 +544,7 @@ def get_missing_bins(original,trimmed):
         index.append(k+j)
     return np.array(index)
     
-def to_pdb(structure,filename,contigs=None,annotations=None,indices=None):
+def to_pdb(structure,filename,contigs=None,annotations=None,indices=None,special_bins=None):
     """From a structure (or matrix) generate the corresponding pdb file
     representing each chain as a contig/chromosome and filling the occupancy
     field with a custom annotation. If the matrix has been trimmed somewhat,
@@ -557,6 +558,8 @@ def to_pdb(structure,filename,contigs=None,annotations=None,indices=None):
         annotations = np.zeros(n+1)
     if indices is None:
         indices = range(n+1)
+    if special_bins is None:
+        special_bins = np.zeros(n+1)
 
     if isinstance(structure, np.ndarray) and structure.shape[0] == structure.shape[1]:
         structure = (to_structure(structure))
@@ -570,13 +573,16 @@ def to_pdb(structure,filename,contigs=None,annotations=None,indices=None):
     X = np.around(X,3)
     Y = np.around(Y,3)
     Z = np.around(Z,3)
+    
+    reference = ["OW","OW","CE","TE","tR"]
+    
     with open(filename, 'w') as f:
         for i in range(1,n):
             line = "ATOM" #1-4 "ATOM"
             line += "  " #5-6 unused
             line += str(i).rjust(5) #7-11 atom serial number
             line += " " #12 unused
-            line += "OW".rjust(4) #13-16 atom name
+            line += reference[special_bins[i]].rjust(4) #13-16 atom name
             line += " " #17 alternate location indicator
             line += "SOL" #18-20 residue name
             line += " " #21 unused
@@ -607,12 +613,22 @@ def to_distance(matrix,alpha=1):
         print(str(e))
         raise   
         
+    if callable(alpha):
+        distance_function = alpha
+    else:
+        try:
+            a = np.float64(alpha)
+            distance_function = lambda x: 1/(x**a)
+        except TypeError:
+            print("Alpha parameter must be callable or an array-like")
+            raise            
+        
     if hasattr(matrix, 'getformat'):
         distances = scipy.sparse.coo_matrix(matrix)
-        distances.data = 1/distances.data
+        distances.data = distance_function(distances.data)
     else:
         distances = np.zeros(matrix.shape)
-        distances[matrix!=0] = 1/matrix[matrix!=0]**alpha
+        distances[matrix!=0] = distance_function(1/matrix[matrix!=0])
 
     return scipy.sparse.csgraph.floyd_warshall(distances,directed=False)
     
@@ -620,9 +636,22 @@ def distance_to_contact(D,alpha=1):
     """Compute contact matrix from input distance matrix. Distance values of
     zeroes are given the largest contact count otherwise inferred non-zero
     distance values."""
-    m = np.max(1/(D[D!=0]**alpha))
+    
+    if callable(alpha):
+        distance_function = alpha
+    else:
+        try:
+            a = np.float64(alpha)
+            distance_function = lambda x: 1/(x**(1/a))
+        except TypeError:
+            print("Alpha parameter must be callable or an array-like")
+            raise 
+        except ZeroDivisionError:
+            raise ValueError("Alpha parameter must be non-zero")
+            
+    m = np.max(distance_function(D[D!=0]))
     M = np.zeros(D.shape)
-    M[D!=0] = 1/(D[D!=0]**alpha)
+    M[D!=0] = distance_function(D[D!=0])
     M[D==0] = m
     return M
     
@@ -663,7 +692,7 @@ def pdb_to_structure(filename):
     for chain in structure.get_chains():
         atoms = [np.array(atom.get_coord()) for atom in structure.get_atoms()]   
     return atoms
-
+    
 def noise(matrix):
     D = shortest_path_interpolation(matrix,strict=True)
     return np.random.poisson(lam=D)
@@ -674,10 +703,14 @@ def positions_to_contigs(positions):
         flattened_positions = positions.flatten()
     else:
         try:
-            flattened_positions = [pos for contig in positions for pos in contig]
+            flattened_positions = np.array([pos for contig in positions for pos in contig])
         except TypeError:
-            flattened_positions = positions
+            flattened_positions = np.array(positions)
             
+    if (np.diff(positions) == 0).any() and not (0 in set(positions)):
+        warnings.warn("I detected identical consecutive nonzero values which am I interpreting as belonging to a contigs array rather than a positions array.")
+        return positions
+    
     n = len(flattened_positions)
     contigs = np.ones(n)
     counter = 0
@@ -689,22 +722,115 @@ def positions_to_contigs(positions):
             contigs[i] = contigs[i-1]
     return contigs
     
-def distance_diagonal_law(matrix, positions=None):
-    return np.array([np.average(np.diagonal(matrix,j)) for j in range(min(matrix.shape))])
+def distance_diagonal_law(matrix, positions=None, intra_only=False):
+    n = min(matrix.shape)
+    if positions is None:
+        return np.array([np.average(np.diagonal(matrix,j)) for j in range(n)])
+    else:
+        contigs = positions_to_contigs(positions)
+        
+    def is_intra(i,j):
+        return contigs[i] == contigs[j]
+        
+    max_intra_distance = max((len(contigs==u) for u in set(contigs)))
+        
+    intra_contacts = []
+    inter_contacts = [np.average(np.diagonal(matrix,j)) for j in range(max_intra_distance, n)]
+    for j in range(max_intra_distance):
+        D = np.diagonal(matrix,j)
+        for i in range(len(D)):
+            diagonal_intra = []
+            if is_intra(i,j):
+                diagonal_intra.append(D[i])
+#            else:
+#                diagonal_inter.append(D[i])
+#        inter_contacts.append(np.average(np.array(diagonal_inter)))
+        intra_contacts.append(np.average(np.array(diagonal_intra)))
+    
+    if not intra_only:
+        intra_contacts.extend(inter_contacts)
+    
+    return [positions, np.array(intra_contacts)]
+    
+def rippe_parameters(matrix, positions, init=None, circ=False):
+    measurements, bins = distance_diagonal_law(matrix,positions,intra_only=True)
+    parameters = estimate_param_rippe(measurements,bins,circ=circ)
+    print(parameters)
+    return parameters[0]
+    
+    
+def estimate_param_rippe(measurements,bins,init=None,circ=False):
+    
+    #Init values
+    DEFAULT_INIT_RIPPE_PARAMETERS = [1,9.6,-1.5]
+    d = 3
+    
+    def log_residuals(p, y, x):
+        kuhn, lm, slope, A = p
+        rippe = np.log(A) + np.log(0.53) - 3 * np.log(kuhn) + slope*(np.log(lm * x) - np.log(kuhn)) + \
+                (d - 2) / ((np.power((lm * x / kuhn), 2) + d))
+        err = y - rippe
+    
+        return err
+        
+    def peval(x, param, circ=False):
+        
+        if circ:
+            l_cont = x.max()
+            n = param[1] * x /param[0]
+            n0 = param[1] * x[0] /param[0]
+            n_l = param[1] * l_cont /param[0]
+            s = n * (n_l - n) / n_l
+            s0 = n0 * (n_l - n0) / n_l
+            norm_lin = param[3] * (0.53 * (param[0] ** -3.) * np.power(n0, (param[2])) *
+                    np.exp((d - 2) / ((np.power(n0, 2) + d))))
+        
+            norm_circ = param[3] * (0.53 * (param[0] ** -3.) * np.power(s0, (param[2])) *
+                    np.exp((d - 2) / ((np.power(s0, 2) + d))))
+        
+            rippe = param[3] * (0.53 * (param[0] ** -3.) * np.power(s, (param[2])) *
+                    np.exp((d - 2) / ((np.power(s, 2) + d)))) * norm_lin / norm_circ
 
-def null_model(matrix, positions=None, model="uniform", noisy=False):
+        else: 
+            rippe = param[3] * (0.53 * (param[0] ** -3.) * np.power((param[1] * x/param[0]), (param[2])) *
+                    np.exp((d - 2) / ((np.power((param[1] * x / param[0]), 2) + d))))
+                    
+        return rippe
+        
+    if init is None:
+        init = DEFAULT_INIT_RIPPE_PARAMETERS
+        
+    A = np.sum(measurements)
+    
+    p0 = (p for p in init), A
+    from scipy.optimize import leastsq
+    plsq = leastsq(log_residuals, p0, args=(np.log(measurements), bins))
+    
+    y_estim = peval(bins, plsq[0], circ=circ)
+    kuhn_x, lm_x, slope_x, A_x  = plsq[0]
+    plsq_out = [kuhn_x, lm_x, slope_x, d, A_x]
+
+    np_plsq = np.array(plsq_out)
+    # print "parameters from optimization = ", np_plsq
+    if np.any(np.isnan(np_plsq)) or slope_x >= 0:
+        warnings.warn("Problem in parameters estimation")
+        plsq_out = p0
+
+    return plsq_out, y_estim
+
+def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=False, circ=False):
     n,m = matrix.shape
     positions_supplied = True
     if positions is None:
         positions = range(n)
         positions_supplied = False
+    if lengths is None:
+        lengths = np.diff(positions)
         
     contigs = np.array(positions_to_contigs(positions))
     
     def is_inter(i,j):
         return contigs[i] != contigs[j]
-    def is_intra(i,j):
-        return not is_inter(i,j)
     
     diagonal = np.diag(matrix)    
     
@@ -719,9 +845,30 @@ def null_model(matrix, positions=None, model="uniform", noisy=False):
         np.fill_diagonal(N,diagonal)
         
     elif model == "distance":
-        distances = distance_diagonal_law(matrix)
+        distances = distance_diagonal_law(matrix,positions)
         N = np.array([[distances[min(abs(i-j),n)] for i in range(n)] for j in range(n)])
+        
+    elif model == "rippe":
+        
+        trans_contacts = np.array([matrix[i,j] for i,j in itertools.product(range(n),range(m)) if is_inter(i,j)])
+        mean_trans_contacts = np.average(trans_contacts)
+        kuhn, lm, slope, d, A = rippe_parameters(matrix, positions, circ=circ)
+        def jc(s,frag):
+            dist = s-circ*(s**2)/lengths[frag]
+            return np.maximum(0.53*A*(kuhn**(-3.))*(dist**(slope))*np.exp((d-2)/(dist+d)),mean_trans_contacts)
+        
+        N = np.copy(matrix)
+        for i in range(n):
+            for j in range(n):
+                if not is_inter(i,j) and i != j:
+                    posi,posj = positions[i],positions[j]
+                    N[i,j] = jc(np.abs(posi-posj)*lm/kuhn,frag=j)
+                else:
+                    N[i,j] = mean_trans_contacts
+        
     if noisy:
+        if callable(noisy):
+            noise = noisy
         return noise(N)
     else:
         return N
