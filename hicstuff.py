@@ -7,18 +7,53 @@ import collections
 import itertools
 from hicmatrix import HiCMatrix
 
-def despeckle(M, stds=2, width=2):
+def despeckle_advanced(M, positions=None, lengths=None, stds=2):
+    N = np.copy(M)
+    n,m = M.shape
+    if positions is None:
+        positions = range(min(n,m))
+    if lengths is None:
+        lengths = np.abs(np.diff(positions))
+        
+    def distance(i,j):
+        mean_length = (lengths[i]+lengths[j])/2.
+        if positions[i] < positions[j]:
+            d = ((positions[j] - positions[i] - lengths[i]) + mean_length)/1000.
+        else:
+            d = ((positions[i] - positions[j] - lengths[j]) + mean_length)/1000.
+        return d
+    
+    measurements, bins = {},[]
+    for i in range(n):
+        for j in range(1,i):
+            d = distance(i,j)
+            bins.append(np.abs(d))
+            try:
+                measurements[np.abs(d)].append(M[i,j])
+            except KeyError:
+                measurements[np.abs(d)] = [M[i,j]]
+        
+    mean = [np.mean(np.array(measurements[k])) for k in measurements.keys()]
+    std = [np.std(np.array(measurements[k])) for k in measurements.keys()]
+            
+    for i,j in itertools.product(range(stds,n-stds),range(stds,m-stds)):
+        d = distance(i,j)
+        if M[i,j] >= mean[d] + std*stds:
+            N[i,j] = mean[d]
+    
+    return (N+N.T)/2
+
+def despeckle_simple(M, stds=2, width=2):
    """Replaces outstanding values (above stds standard deviations) in a matrix 
    by the average of a surrounding window of desired width."""
    N = np.copy(M)
    n,m = M.shape
-   for i in range(stds,n-stds):
-       for j in range(stds,m-stds):
-           square = M[i-width:i+width,j-width:j+width]
-           avg = np.average(square)
-           std = np.std(square)
-           if M[i,j] >= avg + stds*std:
-               N[i,j] = avg
+   for i,j in itertools.product(range(stds,n-stds),range(stds,m-stds)):
+       square = M[i-width:i+width,j-width:j+width]
+       avg = np.average(square)
+       std = np.std(square)
+       if M[i,j] >= avg + stds*std:
+           N[i,j] = avg
    return (N+N.T)/2
 
 def bin_dense(M,subsampling_factor=3):
@@ -698,7 +733,7 @@ def noise(matrix):
     return np.random.poisson(lam=D)
     
 def positions_to_contigs(positions):
-    
+    """Flattens and converts a positions array to a contigs array, if applicable."""
     if isinstance(positions,np.ndarray):
         flattened_positions = positions.flatten()
     else:
@@ -774,8 +809,8 @@ def rippe_parameters(matrix, positions, lengths=None, init=None, circ=False):
 def estimate_param_rippe(measurements,bins,init=None,circ=False):
     
     #Init values
-    DEFAULT_INIT_RIPPE_PARAMETERS = [1,9.6,-1.5]
-    d = 3
+    DEFAULT_INIT_RIPPE_PARAMETERS = [1.,9.6,-1.5]
+    d = 3.
     
     def log_residuals(p, y, x):
         kuhn, lm, slope, A = p
