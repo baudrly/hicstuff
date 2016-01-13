@@ -542,7 +542,7 @@ def largest_connected_component(matrix):
         print("Returning input matrix as fallback.")
         return matrix
     
-def to_structure(matrix, alpha=1, filename=None):
+def to_structure(matrix, alpha=1):
     """Compute best matching 3D genome structure from underlying input matrix 
     using ShRec3D-derived method from Lesne et al., 2014.
     
