@@ -274,11 +274,17 @@ def normalize_dense(M,norm="frag",order=1,iterations=3):
     floatorder = np.float64(order)    
     
     if norm == "SCN":
-        for iteration in range(1,iterations):
-            sumrow = s.sum(axis=1)
+        for iteration in range(0,iterations):
+
+            sumrows = s.sum(axis=1)
+            maskrows = (sumrows!=0)[:,None]*(sumrows!=0)[None,:]
+            sums_row = sumrows[:,None]*np.ones(sumrows.shape)[None,:]
+            s[maskrows] = s[maskrows]/sums_row[maskrows]
+            
             sumcols = s.sum(axis=0)
-            s[sumrow!=0][:,sumrow!=0] = s[sumrow!=0][:,sumrow!=0]/sumrow[sumrow!=0]
-            s[sumcols!=0][:,sumcols!=0] = s[sumcols!=0][:,sumcols!=0]/sumcols[sumcols!=0]        
+            maskcols = (sumcols!=0)[:,None]*(sumcols!=0)[None,:]
+            sums_col = sumcols[None,:]*np.ones(sumcols.shape)[:,None]
+            s[maskcols] = s[maskcols]/sums_col[maskcols]
         
     elif norm == "mirnylib":
         try:        
