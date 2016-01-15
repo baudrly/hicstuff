@@ -413,7 +413,7 @@ class HiCMatrix(object):
         hcs.topdb(self.matrix,filename,self.contigs,self.annotations)
         print("Written to "+str(filename))
         
-    def trim(self, n_std=3, s_min=None, s_max=None, thresh):
+    def trim(self, thresh, n_std=3, s_min=None, s_max=None):
         
         M = np.array(self.matrix)
         sparsity = M.sum(axis=1)
@@ -431,6 +431,9 @@ class HiCMatrix(object):
         new_annotations = {name:annotation[f] for key, annotation in self.annotations.items()}
         new_contigs = self.contigs[f]
         new_positions = self.contigs[f]
+        new_structure = self.structure[f]
+        new_GC = self.GC[f]
+        new_sparsity = self.sparsity[f]
         
         return HiCMatrix(new_matrix, self.name, new_size, self.n_contigs, 
                          self.genome, new_annotations, new_positions, new_contigs,
