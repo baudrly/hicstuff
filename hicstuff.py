@@ -922,6 +922,20 @@ def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=Fals
                     N[i,j] = jc(np.abs(posi-posj)*lm/kuhn,frag=j)
                 else:
                     N[i,j] = mean_trans_contacts
+                    
+    if sparsity:
+        contact_sum = matrix.sum(axis=0)
+        n = len(contact_sum)
+        try:
+            from Bio.Statistics import lowess
+            trend = lowess(np.array(range(n),dtype=np.float64),contact_sum,f=0.03)
+        except ImportError:
+            w = min(max(int(np.amax(contact_sum)/np.average(contact_sum)),20),100)
+            trend = np.array([np.average(contact_sum[i:min(i+w,n)]) for i in range(n)])
+        
+        cov_score = (trend - np.average(trend))/np.std(trend)
+        
+        N = ((N*cov_score).T)*cov_score
         
     if noisy:
         if callable(noisy):
