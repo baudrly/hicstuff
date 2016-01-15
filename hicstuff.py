@@ -5,7 +5,10 @@ import warnings
 import string
 import collections
 import itertools
-from hicmatrix import HiCMatrix
+try:
+    from hicmatrix import HiCMatrix
+except ImportError:
+    warnings.warn("I couldn't import HiCMatrix class.")
 
 def despeckle_advanced(M, positions=None, lengths=None, stds=2):
     N = np.copy(M)
