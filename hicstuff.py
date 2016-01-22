@@ -564,9 +564,13 @@ def to_structure(matrix, alpha=1):
     d = np.array(np.sum(distances**2,0)/n - bary) #distances to origin
     gram = np.array([(d[i]+d[j]-distances[i][j]**2)/2 for i,j in itertools.product(range(n),range(m))]).reshape(n,m)
     normalized = gram/np.linalg.norm(gram,'fro')
-    symmetric = (normalized + normalized.T)/2 #just in case
+    symmetric = np.array((normalized + normalized.T)/2) #just in case
     from scipy import linalg
     eigen_values, eigen_vectors = linalg.eigh(symmetric)
+    if not (eigen_values>=0).all():
+        warnings.warn("I couldn't import mpmath for arbitrary precision calculations." 
+        "Computed eigen values may be negative which will impact"
+        "resulting structure.")
     idx = eigen_values.argsort()[-3:][::-1]
     values = eigen_values[idx]
     vectors = eigen_vectors[:,idx]
@@ -875,7 +879,7 @@ def estimate_param_rippe(measurements,bins,init=None,circ=False):
 
     return plsq_out, y_estim
 
-def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=False, circ=False):
+def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=False, circ=False, sparsity=False):
     n,m = matrix.shape
     positions_supplied = True
     if positions is None:
@@ -883,6 +887,8 @@ def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=Fals
         positions_supplied = False
     if lengths is None:
         lengths = np.diff(positions)
+        
+    N = np.copy(matrix)
         
     contigs = np.array(positions_to_contigs(positions))
     
@@ -914,7 +920,6 @@ def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=Fals
             dist = s-circ*(s**2)/lengths[frag]
             return np.maximum(0.53*A*(kuhn**(-3.))*(dist**(slope))*np.exp((d-2)/(dist+d)),mean_trans_contacts)
         
-        N = np.copy(matrix)
         for i in range(n):
             for j in range(n):
                 if not is_inter(i,j) and i != j:
@@ -922,7 +927,7 @@ def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=Fals
                     N[i,j] = jc(np.abs(posi-posj)*lm/kuhn,frag=j)
                 else:
                     N[i,j] = mean_trans_contacts
-                    
+        
     if sparsity:
         contact_sum = matrix.sum(axis=0)
         n = len(contact_sum)
@@ -933,13 +938,37 @@ def null_model(matrix, positions=None, lengths=None, model="uniform", noisy=Fals
             w = min(max(int(np.amax(contact_sum)/np.average(contact_sum)),20),100)
             trend = np.array([np.average(contact_sum[i:min(i+w,n)]) for i in range(n)])
         
-        cov_score = (trend - np.average(trend))/np.std(trend)
+        cov_score = np.sqrt((trend - np.average(trend))/np.std(trend))
         
         N = ((N*cov_score).T)*cov_score
-        
+    
     if noisy:
         if callable(noisy):
             noise = noisy
         return noise(N)
     else:
         return N
+        
+def model_norm(matrix, positions=None, lengths=None, model="uniform", circ=False):
+    N = null_model(matrix, positions, lengths, model, noisy=False, circ=circ, sparsity=True)
+    return matrix/shortest_path_interpolation(N,strict=True)
+    
+def trim_structure(struct,filtering="cube",n=2):
+    X,Y,Z = (struct[:,i] for i in range(3))
+    
+    if filtering == "sphere":
+        R = (np.std(X)**2 + np.std(Y)**2 + np.std(Z)**2) * (n**2)
+        f = (X-np.mean(X))**2 + (Y-np.mean(Y))**2 + (Z-np.mean(Z))**2 < R
+        
+    if filtering == "cube":
+        R = min(np.std(X),np.std(Y),np.std(Z))*n
+        f = np.ones(len(X))
+        for C in (X,Y,Z):
+            f *= np.abs(C-np.mean(C)) < R
+        
+    if filtering == "percentile":
+        f = np.ones(len(X))
+        for C in (X,Y,Z):
+            f *= np.abs(C-np.mean(C)) < np.percentile(np.abs(C-np.mean(C)),n)
+            
+    return np.array([X[f],Y[f],Z[f]])
