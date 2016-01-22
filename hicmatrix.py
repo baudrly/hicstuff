@@ -155,9 +155,9 @@ class HiCMatrix(object):
             raise ValueError("Input matrix must be sparse or 2D")
         elif len(matrix.shape) == len(matrix) == 1:
             matrix.shape = (1,1)
-        is_sparse = min(matrix.shape) == 3 and max(matrix.shape) != 3
+        is_sparse = (min(matrix.shape) == 3 and max(matrix.shape) != 3) or hasattr(matrix,"getformat")
         is_horizontal = is_sparse and matrix.shape[0] > matrix.shape[1]
-        is_square = not is_sparse and matrix.shape[0] == matrix.shape[1]
+        is_square = (not is_sparse and matrix.shape[0] == matrix.shape[1]) or (is_sparse and np.amax(matrix.row) == np.amax(matrix.col))
         if not is_square:
             warnings.warn("Input matrix was found not to be square. I will try to sort out the extra lines, but things may be messy.", RuntimeWarning)
         
@@ -428,12 +428,12 @@ class HiCMatrix(object):
         f = (sparsity>s_min)*(sparsity<s_max) #trimming filter
         new_matrix = M[f][:,f]
         new_size = len(f)
-        new_annotations = {name:annotation[f] for key, annotation in self.annotations.items()}
+        new_annotations = {key:annotation[f] for key, annotation in self.annotations.items()}
         new_contigs = self.contigs[f]
         new_positions = self.contigs[f]
-        new_structure = self.structure[f]
         new_GC = self.GC[f]
         new_sparsity = self.sparsity[f]
+        new_structure = self.structure[f]
         
         return HiCMatrix(new_matrix, self.name, new_size, self.n_contigs, 
                          self.genome, new_annotations, new_positions, new_contigs,
