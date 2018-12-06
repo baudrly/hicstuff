@@ -1,0 +1,7 @@
+name: hicstuff
+dependencies:
+  - notebook
+  - sphinx
+  - nbsphinx
+  - recommonmark
+  - hicstuff
