@@ -1,1 +1,1 @@
-from .hicstuff import hicstuff, fraglist, vizmap
+from .hicstuff import hicstuff

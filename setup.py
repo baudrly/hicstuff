@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""General purpose stuff to generate and process Hi-C data in its simplest form
-(csv files) as well as instaGRAAL format.
+"""General purpose stuff to generate and handle Hi-C data in its simplest form.
 """
 
 from setuptools import setup, find_packages
@@ -33,7 +32,7 @@ name = "hicstuff"
 
 MAJOR = 0
 MINOR = 1
-MAINTENANCE = 0
+MAINTENANCE = 2
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"

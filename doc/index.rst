@@ -10,7 +10,14 @@ Welcome to hicstuff's documentation!
    :maxdepth: 2
    :caption: Contents:
 
+Reference API
+=============
 
+.. toctree::
+    :maxdepth: 3
+
+    api/modules
+    api/hicstuff
 
 Indices and tables
 ==================
