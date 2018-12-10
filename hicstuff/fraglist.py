@@ -57,9 +57,7 @@ def write_frag_info(
 
         with open(frag_list_path, "w") as fragments_list:
 
-            fragments_list.write(
-                "id\tchrom\tstart_pos" "\tend_pos\tsize\tgc_content\n"
-            )
+            fragments_list.write("id\tchrom\tstart_pos" "\tend_pos\tsize\tgc_content\n")
 
             total_frags = 0
 
@@ -124,7 +122,7 @@ def write_sparse_matrix(
     fragments_list=DEFAULT_SPARSE_MATRIX_FILE_NAME,
     output_file=DEFAULT_SPARSE_MATRIX_FILE_NAME,
     output_dir=None,
-    pos_matrix=False
+    pos_matrix=False,
 ):
     """Generate a GRAAL-compatible sparse matrix from a sorted intersection
     BED file.
@@ -142,8 +140,8 @@ def write_sparse_matrix(
         _ = next(fraglist_handle)
         my_id = 0
         for line in fraglist_handle:
-            contig_name, position = line.split("\t")[1:3]
-            ids_and_positions[(contig_name, position)] = my_id
+            contig_name, position, end = line.rstrip("\n").split("\t")[1:4]
+            ids_and_positions[(contig_name, position, end)] = my_id
             my_id += 1
     print("Done.")
 
@@ -155,7 +153,7 @@ def write_sparse_matrix(
         is_forward = True
         for line in intersect_handle:
             if is_forward:
-                read_forward = line.split("\t")
+                read_forward = line.rstrip("\n").split("\t")
                 is_forward = False
                 continue
             else:
@@ -170,7 +168,7 @@ def write_sparse_matrix(
                     end_fragment_forward,
                 ) = read_forward
 
-                read_reverse = line.split("\t")
+                read_reverse = line.rstrip("\n").split("\t")
                 (
                     _,
                     start_reverse,
@@ -188,21 +186,29 @@ def write_sparse_matrix(
                 short_name_forward = name_forward.split()[0]
                 short_name_reverse = name_reverse.split()[0]
                 if short_name_forward == short_name_reverse:
-                    abs_position_for = (contig_forward, start_fragment_forward)
-                    abs_position_rev = (contig_reverse, start_fragment_reverse)
+                    abs_position_for = (
+                        contig_forward,
+                        start_fragment_forward,
+                        end_fragment_forward,
+                    )
+                    abs_position_rev = (
+                        contig_reverse,
+                        start_fragment_reverse,
+                        end_fragment_reverse,
+                    )
                     try:
                         id_frag_for = ids_and_positions[abs_position_for]
                         id_frag_rev = ids_and_positions[abs_position_rev]
                     except KeyError:
-                        print((
-                            "Couldn't find matching fragment "
-                            "id for position {} or position "
-                            "{}".format(id_frag_for, id_frag_rev)
-                        ))
-                    else:
-                        fragment_pair = tuple(
-                            sorted((id_frag_for, id_frag_rev))
+                        print(
+                            (
+                                "Couldn't find matching fragment "
+                                "id for position {} or position "
+                                "{}".format(abs_position_for, abs_position_rev)
+                            )
                         )
+                    else:
+                        fragment_pair = tuple(sorted((id_frag_for, id_frag_rev)))
                         contacts[fragment_pair] += 1
                         # print("Successfully added contact between"
                         #       " {} and {}".format(id_fragment_forward,
@@ -224,18 +230,17 @@ def write_sparse_matrix(
     if pos_matrix:
         # Get reverse mapping between fragments ids and pos
         positions_and_ids = {id: pos for pos, id in list(ids_and_positions.items())}
-        def parse_coord(coord): return ','.join(str(x) for x in coord)
+
+        def parse_coord(coord):
+            return "\t".join(str(x) for x in coord)
 
         with open(output_file_path, "w") as output_handle:
-            output_handle.write("chr_a,pos_a\tchr_b,pos_b\tn_contact\n")
             for id_pair in sorted(contacts):
                 id_fragment_a, id_fragment_b = id_pair
                 nb_contacts = contacts[id_pair]
                 coord_a = parse_coord(positions_and_ids[id_fragment_a])
                 coord_b = parse_coord(positions_and_ids[id_fragment_b])
-                line_to_write = "{}\t{}\t{}\n".format(
-                    coord_a, coord_b, nb_contacts
-                )
+                line_to_write = "{}\t{}\t{}\n".format(coord_a, coord_b, nb_contacts)
                 output_handle.write(line_to_write)
 
     else:
@@ -286,26 +291,21 @@ def dade_to_GRAAL(
     elif bin_type == '"BIN"':
         print("I detected fixed size binning")
     else:
-        print((
-            "Sorry, I don't understand this matrix's "
-            "binning: I read {}".format(str(bin_type))
-        ))
+        print(
+            (
+                "Sorry, I don't understand this matrix's "
+                "binning: I read {}".format(str(bin_type))
+            )
+        )
 
     header_data = [
-        header_elt.replace("'", "")
-        .replace('"', "")
-        .replace("\n", "")
-        .split("~")
+        header_elt.replace("'", "").replace('"', "").replace("\n", "").split("~")
         for header_elt in header[1:]
     ]
 
-    (
-        global_frag_ids,
-        contig_names,
-        local_frag_ids,
-        frag_starts,
-        frag_ends,
-    ) = np.array(list(zip(*header_data)))
+    (global_frag_ids, contig_names, local_frag_ids, frag_starts, frag_ends) = np.array(
+        list(zip(*header_data))
+    )
 
     frag_starts = frag_starts.astype(np.int32) - 1
     frag_ends = frag_ends.astype(np.int32) - 1
@@ -336,9 +336,7 @@ def dade_to_GRAAL(
 
     with open(output_frags, "w") as fragments_list:
 
-        fragments_list.write(
-            "id\tchrom\tstart_pos\tend_pos" "\tsize\tgc_content\n"
-        )
+        fragments_list.write("id\tchrom\tstart_pos\tend_pos" "\tsize\tgc_content\n")
         bogus_gc = 0.5
 
         for i in range(total_length):
@@ -378,31 +376,30 @@ def main():
     )
 
     parser.add_argument(
-        "-F",
-        "--frags",
-        type=str,
-        help="Fragments list for sparse matrix generation",
+        "-F", "--frags", type=str, help="Fragments list for sparse matrix generation"
     )
 
     parser.add_argument(
         "-o", "--output-dir", help="Directory for output files", required=True
     )
 
-    parser.add_argument("-p", "--pos-matrix", help="Generate position-based "
-                        "sparse matrix (chrA,posA\tchrB,posB\tcontacts) rather than GRAAL "
-                        "compatible.", action="store_true")
+    parser.add_argument(
+        "-p",
+        "--pos-matrix",
+        help="Generate position-based "
+        "sparse matrix (chrA,posA\tchrB,posB\tcontacts) rather than GRAAL "
+        "compatible.",
+        action="store_true",
+    )
 
     parser.add_argument(
         "-e",
         "--enzyme",
         type=str,
-        help="Restriction enzyme to use "
-        "or integer (for evenly-sized chunks)",
+        help="Restriction enzyme to use " "or integer (for evenly-sized chunks)",
     )
 
-    parser.add_argument(
-        "-s", "--size", type=str, help="Minimum size threshold"
-    )
+    parser.add_argument("-s", "--size", type=str, help="Minimum size threshold")
 
     parser.add_argument(
         "-C", "--circular", action="store_true", help="Genome is circular"
@@ -418,6 +415,7 @@ def main():
     _intersection = args.intersection
     _size = args.size
     _circular = args.circular
+    _pos_matrix = args.pos_matrix
 
     if _intersection:
         input_file = _intersection
@@ -425,7 +423,7 @@ def main():
             intersect_sorted=input_file,
             fragments_list=_frags,
             output_dir=_output_dir,
-            pos_matrix=pos_matrix
+            pos_matrix=_pos_matrix,
         )
 
     elif _dade:
