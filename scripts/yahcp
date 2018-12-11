@@ -22,6 +22,7 @@ clean_up=1
 threads=1
 minimap=0
 circular=""
+iterative=0
 tmp_dir=$output_dir
 
 #Argument parsing
@@ -95,6 +96,14 @@ while [[ $# -gt 0 ]]; do
       circular=" --circular"
       shift
       ;;
+    -i | --iterative)
+      iterative=1
+      shift
+      ;;
+    -F | --filter)
+      circular=" --filter"
+      shift
+      ;;
     -h | --help)
       trigger_help=1
       shift
@@ -140,6 +149,8 @@ if [ -z "$reads_for" ] || [ -z "$reads_rev" ] || [ -z "$fasta" ] || [ "$trigger_
            -t or --threads: Number of threads to use for the aligner and samtools. Defaults to 1.
            -T or --tmp: Directory for storing intermediary BED files and temporary sort files. Defaults to the output directory.
            -m or --minimap: Use the minimap2 aligner instead of bowtie2. Not enabled by default.
+           -i or --iterative: Map reads iteratively, by truncating reads to 20bp and then repeatedly extending and aligning them.
+           -F or --filter: Filter out spurious 3C events (loops and uncuts). Excludes pairs where reads are closer than a number of restriction fragments (estimated from the data).
            -h or --help: Display this help message.
 
        The expected files in the output directory will take the form:
@@ -150,7 +161,7 @@ if [ -z "$reads_for" ] || [ -z "$reads_rev" ] || [ -z "$fasta" ] || [ "$trigger_
   exit 1
 fi
 
-#Check everything's in place
+# 0. Check everything's in place
 python3 -c "import Bio" >/dev/null 2>&1 || {
   echo "Error! Biopython is missing from your python libraries. Please install it (using either your package manager or pip)"
   exit 1
@@ -169,26 +180,16 @@ for tool in $aligner samtools bedtools fraglist; do
   }
 done
 
-index=${fasta%.fa}
 t=$((threads / 2 < 1 ? 1 : threads / 2))
 
 mkdir -p "$output_dir"
 mkdir -p "$tmp_dir"
 
-#Write fragments_list.txt info_contigs.txt
+# 1. Write fragments_list.txt info_contigs.txt
 echo "Writing fragment information..."
 fraglist --fasta "$fasta" --enzyme "$enzyme" --output-dir "$output_dir" --size "$size""$circular"
 
-#Build fasta index files
-
-if [ $minimap -eq 0 ]; then
-  if [ ! -f "${index}".1.bt2 ]; then
-    echo "Building fasta index files..."
-    bowtie2-build --quiet "$fasta" "$index"
-  fi
-fi
-
-#Remove adapters and PCR duplicates
+# 2. Remove adapters and PCR duplicates
 if [ $duplicate -eq 1 ]; then
   echo "Removing adapters and PCR duplicates..."
 
@@ -208,23 +209,39 @@ fi
 # 3/ convert to bed
 # 4/ keep relevant fields (chromosome/contig, starting position, end position, read name, orientation)
 # 5/ sort by chromosome/contig (#1 in dict order) then by position (#2 in numerical order)
+
+# 3. Perform alignment
 echo "Performing alignment and generating bed files..."
-if [ $minimap -eq 0 ]; then
-  alignment_instruction_for="bowtie2 --very-sensitive-local -p $t -x $index -U $reads_for"
-  alignment_instruction_rev="bowtie2 --very-sensitive-local -p $t -x $index -U $reads_rev"
+# Map reads iteratively
+if [ $iterative -eq 1 ]; then
+  # Conditionaly append minimap option flag to command
+  [ $minimap -eq 1 ] && miniflag="-m"
+  map_cmd() { iteralign -r "$fasta" -p $t -o $2 -T "$tmp_dir" "$miniflag" $1; }
 else
-  alignment_instruction_for="minimap2 -2 -t $t -ax sr $fasta $reads_for"
-  alignment_instruction_rev="minimap2 -2 -t $t -ax sr $fasta $reads_rev"
+  if [ $minimap -eq 0 ]; then
+    #Build fasta index files if they don't exist
+    index=${fasta%.fa}
+    if [ ! -f "${index}".1.bt2 ];then
+      echo "Building fasta index files..."
+      bowtie2-build --quiet "$fasta" "$index"
+    fi
+    map_cmd() { bowtie2 --very-sensitive-local -p $t -x "$index" -U "$1" > "$2"; }
+  else
+    map_cmd() { minimap2 -2 -t $t -ax sr "$fasta" "$1" > "$2"; }
+  fi
 fi
 
-$alignment_instruction_for |
-  samtools view -bS -F 260 -@ $t -q "$quality_min" - |
+sam_for="$tmp_dir/for.sam"
+sam_rev="$tmp_dir/rev.sam"
+map_cmd "$reads_for" "$sam_for"
+map_cmd "$reads_rev" "$sam_rev"
+
+samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_for" |
   bedtools bamtobed -i - |
   awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
     >"$tmp_dir"/unsorted_contacts_for.bed &
 
-$alignment_instruction_rev |
-  samtools view -bS -F 260 -@ $t -q "$quality_min" - |
+samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_rev" |
   bedtools bamtobed -i - |
   awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
     >"$tmp_dir"/unsorted_contacts_rev.bed &
@@ -234,9 +251,8 @@ wait
 # Check if version of UNIX sort supports parallelization and add flag if it does
 sort_par=""
 par=$(sort --version | awk 'NR==1 {if($NF > 8.23) {print 1} else {print 0}}')
-if [ "$par" -eq 1 ]; then
-  sort_par="--parallel=$t"
-fi
+[ "$par" -eq 1 ] && sort_par="--parallel=$t"
+
 
 sort -S 2G "${sort_par}" -T "$tmp_dir" -k1,1d -k2,2n "$tmp_dir"/unsorted_contacts_for.bed "$tmp_dir"/unsorted_contacts_rev.bed \
   >"$tmp_dir"/total_contacts.bed
@@ -256,6 +272,7 @@ echo "Generating contact map..."
 fraglist --intersection "$tmp_dir"/contact_intersect_sorted.bed --frags "$output_dir"/fragments_list.txt --output-dir "$output_dir" ${posmat:+-p}
 
 if [ $clean_up -eq 1 ]; then
+  rm "$sam_for" "$sam_rev"
   rm "$tmp_dir"/fragments_list.bed
   rm "$tmp_dir"/unsorted_contacts_for.bed
   rm "$tmp_dir"/unsorted_contacts_rev.bed

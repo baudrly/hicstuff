@@ -32,7 +32,7 @@ name = "hicstuff"
 
 MAJOR = 0
 MINOR = 1
-MAINTENANCE = 2
+MAINTENANCE = 3
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
@@ -70,6 +70,8 @@ setup(
         "console_scripts": [
             "vizmap=hicstuff.vizmap:main",
             "fraglist=hicstuff.fraglist:main",
+            "iteralign=hicstuff.iteralign:main",
+            "filter3C=hicstuff.filter3C:main",
         ]
     },
 )
