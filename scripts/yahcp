@@ -23,6 +23,7 @@ threads=1
 minimap=0
 circular=""
 iterative=0
+filter3C=0
 tmp_dir=$output_dir
 
 #Argument parsing
@@ -101,7 +102,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -F | --filter)
-      circular=" --filter"
+      filter3C=1
       shift
       ;;
     -h | --help)
@@ -142,7 +143,7 @@ if [ -z "$reads_for" ] || [ -z "$reads_rev" ] || [ -z "$fasta" ] || [ "$trigger_
            -o or --output: Output directory. Defaults to the current directory.
            -e or --enzyme: Restriction enzyme if a string, or chunk size (i.e. resolution) if a number. Defaults to 5000 bp chunks.
            -q or --quality-min: Minimum mapping quality for selecting contacts. Defaults to 30.
-           -d or --duplicates: If enabled, removes adapters and PCR duplicates prior to mapping. Not enabled by default.
+           -d or --duplicates: If enabled, trims (10bp) adapters and PCR duplicates prior to mapping. Not enabled by default.
            -s or --size: Minimum size threshold to consider contigs. Defaults to 0 (keep all contigs).
            -n or --no-clean-up: If enabled, intermediary BED files will be kept after generating the contact map. Disabled by defaut.
            -p or --pos-matrix: If enabled, generates a sparse matrix with positions (chr,pos) instead of GRAAL-compatible format.
@@ -150,7 +151,7 @@ if [ -z "$reads_for" ] || [ -z "$reads_rev" ] || [ -z "$fasta" ] || [ "$trigger_
            -T or --tmp: Directory for storing intermediary BED files and temporary sort files. Defaults to the output directory.
            -m or --minimap: Use the minimap2 aligner instead of bowtie2. Not enabled by default.
            -i or --iterative: Map reads iteratively, by truncating reads to 20bp and then repeatedly extending and aligning them.
-           -F or --filter: Filter out spurious 3C events (loops and uncuts). Excludes pairs where reads are closer than a number of restriction fragments (estimated from the data).
+           -F or --filter: Filter out spurious 3C events (loops and uncuts). Requires -e to be a restriction enzyme, not a chunk size.
            -h or --help: Display this help message.
 
        The expected files in the output directory will take the form:
@@ -161,7 +162,7 @@ if [ -z "$reads_for" ] || [ -z "$reads_rev" ] || [ -z "$fasta" ] || [ "$trigger_
   exit 1
 fi
 
-# 0. Check everything's in place
+# Check everything's in place
 python3 -c "import Bio" >/dev/null 2>&1 || {
   echo "Error! Biopython is missing from your python libraries. Please install it (using either your package manager or pip)"
   exit 1
@@ -185,11 +186,12 @@ t=$((threads / 2 < 1 ? 1 : threads / 2))
 mkdir -p "$output_dir"
 mkdir -p "$tmp_dir"
 
-# 1. Write fragments_list.txt info_contigs.txt
+# Write fragments_list.txt info_contigs.txt
 echo "Writing fragment information..."
-fraglist --fasta "$fasta" --enzyme "$enzyme" --output-dir "$output_dir" --size "$size""$circular"
+fraglist --fasta "$fasta" --enzyme "$enzyme" \
+         --output-dir "$output_dir" --size "$size""$circular"
 
-# 2. Remove adapters and PCR duplicates
+# Remove adapters and PCR duplicates
 if [ $duplicate -eq 1 ]; then
   echo "Removing adapters and PCR duplicates..."
 
@@ -198,7 +200,7 @@ if [ $duplicate -eq 1 ]; then
     exit 1
   }
 
-  perl "$current_dir"/pcr_duplicate_Hiseq20.pl "$reads_for" "$reads_rev" "$reads_for".trimmed "$reads_rev".trimmed
+  pcr_duplicates "$reads_for" "$reads_rev" "$reads_for".trimmed "$reads_rev".trimmed
   reads_for=${reads_for}.trimmed
   reads_rev=${reads_rev}.trimmed
 fi
@@ -210,7 +212,6 @@ fi
 # 4/ keep relevant fields (chromosome/contig, starting position, end position, read name, orientation)
 # 5/ sort by chromosome/contig (#1 in dict order) then by position (#2 in numerical order)
 
-# 3. Perform alignment
 echo "Performing alignment and generating bed files..."
 # Map reads iteratively
 if [ $iterative -eq 1 ]; then
@@ -236,15 +237,15 @@ sam_rev="$tmp_dir/rev.sam"
 map_cmd "$reads_for" "$sam_for"
 map_cmd "$reads_rev" "$sam_rev"
 
-samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_for" |
-  bedtools bamtobed -i - |
-  awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
-    >"$tmp_dir"/unsorted_contacts_for.bed &
+samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_for" \
+  | bedtools bamtobed -i - \
+  | awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
+  > "$tmp_dir"/unsorted_contacts_for.bed &
 
-samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_rev" |
-  bedtools bamtobed -i - |
-  awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
-    >"$tmp_dir"/unsorted_contacts_rev.bed &
+samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_rev" \
+  | bedtools bamtobed -i - \
+  | awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
+  > "$tmp_dir"/unsorted_contacts_rev.bed &
 
 wait
 
@@ -254,22 +255,40 @@ par=$(sort --version | awk 'NR==1 {if($NF > 8.23) {print 1} else {print 0}}')
 [ "$par" -eq 1 ] && sort_par="--parallel=$t"
 
 
-sort -S 2G "${sort_par}" -T "$tmp_dir" -k1,1d -k2,2n "$tmp_dir"/unsorted_contacts_for.bed "$tmp_dir"/unsorted_contacts_rev.bed \
-  >"$tmp_dir"/total_contacts.bed
+sort -S 2G "${sort_par}" -T "$tmp_dir" -k1,1d -k2,2n \
+     "$tmp_dir"/unsorted_contacts_for.bed \
+     "$tmp_dir"/unsorted_contacts_rev.bed \
+     > "$tmp_dir"/total_contacts.bed
 
 #Make a bed out of fragments_list.txt
-awk 'NR>1 { print $2"\t"$3"\t"$4 }' "$output_dir"/fragments_list.txt >"$tmp_dir"/fragments_list.bed
+awk 'NR>1 { print $2"\t"$3"\t"$4 }' \
+    "$output_dir"/fragments_list.txt > "$tmp_dir"/fragments_list.bed
 
 #Intersect fragment list with mapping data
 echo "Intersecting bed files..."
-bedtools intersect -a "$tmp_dir"/total_contacts.bed -b "$tmp_dir"/fragments_list.bed -wa -wb |
-  awk 'OFS="\t" { print $1,$2,$3,$4,$5,$(NF-2),$(NF-1),$NF }' |
-  sort -k4d -S 2G ${sort_par} -T "$tmp_dir" \
-    >"$tmp_dir"/contact_intersect_sorted.bed
+bedtools intersect -a "$tmp_dir"/total_contacts.bed \
+                   -b "$tmp_dir"/fragments_list.bed -wa -wb \
+  | awk 'OFS="\t" { print $1,$2,$3,$4,$5,$(NF-2),$(NF-1),$NF }' \
+  | sort -k4d -S 2G ${sort_par} -T "$tmp_dir" \
+    > "$tmp_dir"/contact_intersect_sorted.bed
+
+# Filter spurious (loops and uncuts) 3C events
+if ! [ $filter3C -eq 1]; then
+  if [ $enzyme =~ '^[0-9]+$' ]; then
+    echo "A restriction enzyme must be specified to filter 3C events."
+    exit 1
+  else
+    filter3C "$tmp_dir/contact_intersect_sorted.bed" \
+             "$tmp_dir/contacts.filtered.bed" &&
+      mv "$tmp_dir/contacts.filtered.bed" "$tmp_dir/contact_intersect_sorted.bed"
+  fi
+fi
 
 # Write GRAAL matrix out of intersecting bed file
 echo "Generating contact map..."
-fraglist --intersection "$tmp_dir"/contact_intersect_sorted.bed --frags "$output_dir"/fragments_list.txt --output-dir "$output_dir" ${posmat:+-p}
+fraglist --intersection "$tmp_dir"/contact_intersect_sorted.bed \
+         --frags "$output_dir"/fragments_list.txt \
+         --output-dir "$output_dir" ${posmat:+-p}
 
 if [ $clean_up -eq 1 ]; then
   rm "$sam_for" "$sam_rev"
