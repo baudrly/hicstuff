@@ -1,1 +1,1 @@
-from .hicstuff import hicstuff
+from .hicstuff import *

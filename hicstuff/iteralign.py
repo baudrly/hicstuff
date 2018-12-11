@@ -96,7 +96,9 @@ def generate_temp_dir(path):
     return full_path
 
 
-def iterative_align(fq_in, tmp_dir, ref, n_cpu, sam_out, minimap2=False, min_len=20):
+def iterative_align(
+    fq_in, tmp_dir, ref, n_cpu, sam_out, minimap2=False, min_len=20
+):
     """
     Aligns reads iteratively reads of fq_in with bowtie2 or minimap2. Reads are
     truncated to the 20 first nucleotides and unmapped reads are extended by 20
@@ -180,7 +182,9 @@ def iterative_align(fq_in, tmp_dir, ref, n_cpu, sam_out, minimap2=False, min_len
             "idx": index,
         }
         if minimap2:
-            cmd = "minimap2 -x sr -a -t {threads} {fa} {fq} > {sam}".format(**map_args)
+            cmd = "minimap2 -x sr -a -t {threads} {fa} {fq} > {sam}".format(
+                **map_args
+            )
         else:
             cmd = "bowtie2 -x {idx} -p {threads} --rdg 500,3 --rfg 500,3 --quiet --very-sensitive -S {sam} {fq}".format(
                 **map_args
@@ -316,7 +320,9 @@ if __name__ == "__main__":
     temp_directory = generate_temp_dir(args.tempdir)
 
     # Aligns iteritatively the fastq file
-    print("\nIterative alignment of: {}\n".format(os.path.basename(args.in_fq)))
+    print(
+        "\nIterative alignment of: {}\n".format(os.path.basename(args.in_fq))
+    )
     iterative_align(
         args.in_fq,
         temp_directory,

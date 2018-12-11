@@ -93,7 +93,16 @@ def process_read_pair(line, sens2type):
             "Did you use a dat file instead of dat.indices ?"
         )
     # Saving each column as a dictionary entry with meaningful key
-    cols = ["chr1", "pos1", "sens1", "indice1", "chr2", "pos2", "sens2", "indice2"]
+    cols = [
+        "chr1",
+        "pos1",
+        "sens1",
+        "indice1",
+        "chr2",
+        "pos2",
+        "sens2",
+        "indice2",
+    ]
     p = {cols[i]: p[i] for i in range(len(cols))}
     # Transforming numeric columns to int
     for col in ["pos1", "indice1", "pos2", "indice2"]:
@@ -141,7 +150,12 @@ def get_thresholds(in_dat, interactive=False):
     max_sites = 500
     n_events = {
         event: np.zeros(max_sites)
-        for event in ["++ (weirds)", "-- (weirds)", "+- (uncuts)", "-+ (loops)"]
+        for event in [
+            "++ (weirds)",
+            "-- (weirds)",
+            "+- (uncuts)",
+            "-+ (loops)",
+        ]
     }
     i = 0
     # Map of sense -> name of event for intrachromosomal pairs.
@@ -220,7 +234,10 @@ def get_thresholds(in_dat, interactive=False):
                 <= exp_stdev
             ):
                 thr_uncut = site
-            if abs(np.log(n_events["-+ (loops)"][site]) - event_med[site]) <= exp_stdev:
+            if (
+                abs(np.log(n_events["-+ (loops)"][site]) - event_med[site])
+                <= exp_stdev
+            ):
                 thr_loop = site
         if thr_uncut is None or thr_loop is None:
             raise ValueError(
@@ -228,13 +245,17 @@ def get_thresholds(in_dat, interactive=False):
                 "Please try running with -i to investigate the problem."
             )
         print(
-            "Inferred thresholds: uncuts={0} loops={1}".format(thr_uncut, thr_loop),
+            "Inferred thresholds: uncuts={0} loops={1}".format(
+                thr_uncut, thr_loop
+            ),
             file=sys.stderr,
         )
     return thr_uncut, thr_loop
 
 
-def filter_events(in_dat, out_filtered, thr_uncut, thr_loop, plot_events=False):
+def filter_events(
+    in_dat, out_filtered, thr_uncut, thr_loop, plot_events=False
+):
     """
     Filter out spurious intrachromosomal Hi-C pairs from input file. +- pairs
     that do not exceed the uncut threshold and -+ pairs that do not exceed the
@@ -322,14 +343,19 @@ def filter_events(in_dat, out_filtered, thr_uncut, thr_loop, plot_events=False):
             )
 
     if lrange_inter > 0:
-        ratio_inter = round(100 * lrange_inter / float(lrange_intra + lrange_inter), 2)
+        ratio_inter = round(
+            100 * lrange_inter / float(lrange_intra + lrange_inter), 2
+        )
     else:
         ratio_inter = 0
 
     # Dump quick summary of operation results into stderr
     kept = lrange_intra + lrange_inter
     discarded = n_loops + n_uncuts + n_weirds
-    print("Proportion of inter contacts: {}%".format(ratio_inter), file=sys.stderr)
+    print(
+        "Proportion of inter contacts: {}%".format(ratio_inter),
+        file=sys.stderr,
+    )
     print(
         "{0} pairs discarded: Loops: {1}, Uncuts: {2}, Weirds: {3}".format(
             discarded, n_loops, n_uncuts, n_weirds
@@ -337,7 +363,9 @@ def filter_events(in_dat, out_filtered, thr_uncut, thr_loop, plot_events=False):
         file=sys.stderr,
     )
     print(
-        "{0} pairs kept ({1}%)".format(kept, round(100 * kept / (kept + discarded), 2)),
+        "{0} pairs kept ({1}%)".format(
+            kept, round(100 * kept / (kept + discarded), 2)
+        ),
         file=sys.stderr,
     )
 
@@ -359,7 +387,10 @@ def filter_events(in_dat, out_filtered, thr_uncut, thr_loop, plot_events=False):
             shadow=True,
             startangle=90,
         )
-        plt.title("Distribution of library events", bbox={"facecolor": "1.0", "pad": 5})
+        plt.title(
+            "Distribution of library events",
+            bbox={"facecolor": "1.0", "pad": 5},
+        )
         plt.text(
             0.3,
             1.15,
@@ -405,7 +436,9 @@ def filter_events(in_dat, out_filtered, thr_uncut, thr_loop, plot_events=False):
 if __name__ == "__main__":
     args = parse_args()
     # Open connection for writing
-    output_handle = sys.stdout if not args.output_file else open(args.output_file, "w")
+    output_handle = (
+        sys.stdout if not args.output_file else open(args.output_file, "w")
+    )
     if args.thresholds:
         # Thresholds supplied by user beforehand
         uncut_thr, loop_thr = args.thresholds
@@ -418,5 +451,10 @@ if __name__ == "__main__":
     # Filter library and write to output file
     with open(args.input_file) as handle_in:
         filter_events(
-            handle_in, output_handle, uncut_thr, loop_thr, plot_events=args.plot_summary
+            handle_in,
+            output_handle,
+            uncut_thr,
+            loop_thr,
+            plot_events=args.plot_summary,
         )
+
