@@ -138,10 +138,9 @@ def iterative_align(fq_in, tmp_dir, ref, n_cpu, sam_out, minimap2=False, min_len
     else:
         uncomp_path = fq_in
 
-    # Index genome if using bowtie2
-    index = False
-    if not minimap2:
-        index = os.path.join(tmp_dir, os.path.basename(ref))
+    # Index genome if using bowtie2 and index does not exist
+    index = os.path.splitext(ref)[0]
+    if not minimap2 and not os.path.isfile(index):
         cmd = "bowtie2-build {0} {1}".format(ref, index)
         sp.call(cmd, shell=True)
 
