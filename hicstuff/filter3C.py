@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Script to analyse the contents of a 3C library in terms of loops, uncuts,
-weirds events, and filter those events.
+Analyse the contents of a 3C library and filters spurious events such as loops
+and uncuts to improve the overall signal. Filtering consists in excluding +-
+and -+ Hi-C pairs if their reads are closer than a threshold in minimum number
+of restriction fragments. This threshold represents the distance at which the
+abundance of these events deviate significantly from the rest of the library.
+It is estimated automatically by default using the median absolute deviation of
+pairs at longer distances, but can also be entered manually.
+
+The program takes a 2D BED file as input with the following fields:
+chromA startA endA indiceA strandA chromB startB endB indiceB strandB
+Each line of the file represents a Hi-C pair with reads A and B. The indices
+are 0-based and represent the restriction fragment to which reads are attributed.
+
 @author: cmdoret (reimplementation of Axel KournaK's code)
 """
 
@@ -10,7 +21,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import sys
-import contextlib
 import argparse
 import pysam as ps
 import os
@@ -23,8 +33,8 @@ def parse_args():
     parser.add_argument(
         "input_file",
         type=str,
-        help="The file containing the coordinates of Hi-C interacting pairs "
-        "and, the indices of their restriction fragments (.dat.indices format).",
+        help="The 2D BED file containing the coordinates of Hi-C interacting "
+        "pairs and, the indices of their restriction fragments and their strands.",
     )
     parser.add_argument(
         "output_file",
@@ -71,13 +81,13 @@ def parse_args():
 
 def process_read_pair(line):
     """
-    Takes a read pair (line) from a dat.indices file as input, reorders the pair
+    Takes a read pair (line) from a 2D BED file as input, reorders the pair
     so that read 1 in intrachromosomal pairs always has the smallest genomic
     coordinate.
     Parameters
     ----------
     line : str
-        Read pair from a dat.indices file.
+        Read pair from a 2D BED file.
     Returns
     -------
     dict
@@ -88,13 +98,19 @@ def process_read_pair(line):
 
     Example
     -------
-        >>> process_read_pair("a 1 - 3 b 2 - 4", {('-','-'):'--'})
-        {'chr1': 'a', 'start1': 1, 'strand1': '-', 'indice1': 3, 'chr2': 'b', 'start2': 2, 'strand2': '-', 'indice2': 4, 'nsites': 1, 'type': 'inter'}
+        >>> process_read_pair("a 1 3 0 - b 2 4 1 -")
+        {'chr1': 'a', 'start1': 1, 'end1': '3', 'indice1': 0, 'strand1': '-', \
+        'chr2': 'b', 'start2': 2, 'end2': 4, 'indice2': 1, 'strand2': '-', \
+        'nsites': 1, 'type': 'inter'}
     """
     # Split line by whitespace
     p = line.split()
     if len(p) != 10:
-        raise ValueError("Your input file does not have 10 columns.")
+        raise ValueError(
+            "Your input file does not have 10 columns. Make sure "
+            "the file has twice the following 5 fields (once for each read in "
+            "the pair): chr start end indice strand."
+        )
     # Saving each column as a dictionary entry with meaningful key
     cols = [
         "chr1",
@@ -142,9 +158,9 @@ def get_thresholds(in_dat, interactive=False):
     Parameters
     ----------
     in_dat: file object
-        File handle in read mode to the input .dat file containing Hi-C pairs.
+        File handle in read mode to the input 2D BED file containing Hi-C pairs.
     interactive: bool
-        If True, plots are diplayed and thresholds are require
+        If True, plots are diplayed and thresholds are required interactively.
     Returns
     -------
     dictionary
@@ -230,14 +246,15 @@ def get_thresholds(in_dat, interactive=False):
 def filter_events(in_dat, out_filtered, thr_uncut, thr_loop, plot_events=False):
     """
     Filter out spurious intrachromosomal Hi-C pairs from input file. +- pairs
-    that do not exceed the uncut threshold and -+ pairs that do not exceed the
-    loop thresholds are excluded from the ouput file. All others are written.
+    with reads closer than the uncut threshold and -+ pairs with reads closer
+    than the loop thresholds are excluded from the ouput file. All others are
+    written.
     Parameters
     ----------
     in_dat : file object
-        File handle in read mode to the input "dat" file containing Hi-C pairs.
+        File handle in read mode to the input 2D BED file containing Hi-C pairs.
     out_filtered : file object
-        File handle in write mode the output filtered "dat" file.
+        File handle in write mode the output filtered 2D BED file.
     thr_uncut : int
         Minimum number of restriction sites between reads to keep an
         intrachromosomal +- pair.

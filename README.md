@@ -22,7 +22,7 @@ or, for the latest version:
 
 ## Usage
 
-### Contact map generation
+### Fastq to contact map pipeline
 
     Usage:
         yahcp -1 reads_forward.fastq -2 reads_reverse.fastq -f genome.fa [-s size] [-o output_directory] [-e enzyme] [-q quality_min] [--duplicates] [--clean-up]
@@ -64,9 +64,46 @@ or, for the latest version:
                                 [default: False]
         -o file, --output file  Save image to output instead of plotting it.
                                 [default: output.png]
-        -m 99, --max 99         Saturation percentile threshold in the contact map.
-                                [default: 99]
+          -m 99, --max 99         Saturation percentile threshold in the contact map.
+                                  [default: 99]
+
+  ### Iterative mapping
+
+  ### Filtering 3C events
+
+    usage: filter3C.py [-h] [-i | -t THRESHOLDS THRESHOLDS] -F FRAGS [-p]
+                       input_file [output_file]
+
+    positional arguments:
+      input_file            The 2D BED file containing the coordinates of Hi-C
+                            interacting pairs and, the indices of their
+                            restriction fragments and their strands.
+      output_file           Path to the output file (filtered dat.indices).
+                            Defaults to stdout.
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      -i, --interactive     Interactively shows plots and asks the user for
+                            thresholds. Overrides predefined thresholds. Disabled
+                            by default.
+      -t THRESHOLDS THRESHOLDS, --thresholds THRESHOLDS THRESHOLDS
+                            The minimum number of restriction fragments between
+                          reads to consider loops and uncut events. Estimated
+                          automatically by default. Must be two integers
+                          separated by a space (-t <loop> <uncut>).
+    -F FRAGS, --frags FRAGS
+                          Path to bed file containing the sorted list of
+                          fragments, with fields: chr start end.
+    -p, --plot_summary    Output a piechart summarizing library composition.
+
 
 ### Library
 
 See the documentation on [reathedocs](https://hicstuff.readthedocs.io). The expected contact map format for the library is a simple CSV file, and the objects handled by the library are simple ```numpy``` arrays.
+
+
+### Individual components
+
+Different scripts can be used independently to perform individual parts of the pipeline.
+
+#### Event filtering
