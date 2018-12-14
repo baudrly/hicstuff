@@ -397,6 +397,13 @@ def main():
         uncut_thr, loop_thr = args.thresholds
     else:
         # Threshold defined at runtime
+        if os.name == "nt":
+            args.interactive = False
+            print(
+                "Warning: Interactive mode disabled on windows machine, thresholds "
+                "estimated automatically and plots not shown.",
+                file=sys.stderr,
+            )
         with open(args.input_file) as handle_in:
             uncut_thr, loop_thr = get_thresholds(handle_in, interactive=args.interactive)
     # Filter library and write to output file
