@@ -36,7 +36,6 @@ def write_frag_info(
     """Write the fragments_list.txt and info_contigs.txt that are necessary
     for GRAAL to run
     """
-
     try:
         my_enzyme = RestrictionBatch([enzyme]).get(enzyme)
     except ValueError:

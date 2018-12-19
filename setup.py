@@ -66,12 +66,5 @@ setup(
     include_package_data=True,
     long_description_content_type="text/markdown",
     install_requires=REQUIREMENTS,
-    entry_points={
-        "console_scripts": [
-            "vizmap=hicstuff.vizmap:main",
-            "fraglist=hicstuff.fraglist:main",
-            "iteralign=hicstuff.iteralign:main",
-            "filter3C=hicstuff.filter3C:main",
-        ]
-    },
+    entry_points={"console_scripts": ["hicstuff=hicstuff.main:main"]},
 )

@@ -20,51 +20,6 @@ import contextlib
 ##############################
 
 
-def parse_args():
-    """ Gets the arguments from the command line."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("in_fq", help="The fastq file containing Hi-C reads.")
-    parser.add_argument(
-        "-r",
-        "--reference",
-        required=True,
-        help="Path to the reference genome, in FASTA format.",
-    )
-    parser.add_argument(
-        "-p",
-        "--nb_processors",
-        default=1,
-        type=int,
-        help="number of CPUs used for alignment.",
-    )
-    parser.add_argument(
-        "-o",
-        "--out_sam",
-        help="Path to the output SAM file for the alignment of in_fq.",
-    )
-    parser.add_argument(
-        "-T",
-        "--tempdir",
-        default=".",
-        help="Directory to write temporary files. Defaults to current directory.",
-    )
-    parser.add_argument(
-        "-m",
-        "--minimap2",
-        default=False,
-        action="store_true",
-        help="Use minimap2 instead of bowtie for the alignment.",
-    )
-    parser.add_argument(
-        "-l",
-        "--min_len",
-        type=int,
-        default=20,
-        help="Minimum length to which reads should be truncated.",
-    )
-    return parser.parse_args()
-
-
 ##############################
 #        FUNCTIONS
 ##############################
@@ -166,9 +121,7 @@ def iterative_align(fq_in, tmp_dir, ref, n_cpu, sam_out, minimap2=False, min_len
         # Generate a temporary input fastq file with the n first nucleotids
         # of the reads.
         print("Generating truncated reads")
-        truncated_reads = truncate_reads(
-            tmp_dir, uncomp_path, remaining_reads, n, min_len
-        )
+        truncated_reads = truncate_reads(tmp_dir, uncomp_path, remaining_reads, n, min_len)
 
         # Align the truncated reads on reference genome
         print("Aligning reads")
@@ -199,9 +152,7 @@ def iterative_align(fq_in, tmp_dir, ref, n_cpu, sam_out, minimap2=False, min_len
     # one last round without trimming
     print("\n" + "-" * 10 + "\nn = {0}".format(size))
     print("Generating truncated reads")
-    truncated_reads = truncate_reads(
-        tmp_dir, uncomp_path, remaining_reads, size, min_len
-    )
+    truncated_reads = truncate_reads(tmp_dir, uncomp_path, remaining_reads, size, min_len)
     print("Aligning reads")
     if minimap2:
         cmd = "minimap2 -x sr -a -t {1} {0} {3} > {2}".format(
@@ -302,33 +253,3 @@ def filter_samfile(temp_alignment, filtered_out):
     outf.close()
 
     return unaligned
-
-
-##############################
-#            MAIN
-##############################
-def main():
-    # Get arguments
-    args = parse_args()
-
-    # Generates temporary folders
-    temp_directory = generate_temp_dir(args.tempdir)
-
-    # Aligns iteritatively the fastq file
-    print("\nIterative alignment of: {}\n".format(os.path.basename(args.in_fq)))
-    iterative_align(
-        args.in_fq,
-        temp_directory,
-        args.reference,
-        args.nb_processors,
-        args.out_sam,
-        args.minimap2,
-        args.min_len,
-    )
-
-    # Deletes the temporary folder
-    st.rmtree(temp_directory)
-
-
-if __name__ == "__main__":
-    main()

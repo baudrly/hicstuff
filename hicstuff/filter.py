@@ -26,59 +26,6 @@ import pysam as ps
 import os
 
 
-def parse_args():
-    """ Gets the arguments from the command line."""
-    parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group()
-    parser.add_argument(
-        "input_file",
-        type=str,
-        help="The 2D BED file containing the coordinates of Hi-C interacting "
-        "pairs and, the indices of their restriction fragments and their strands.",
-    )
-    parser.add_argument(
-        "output_file",
-        type=str,
-        nargs="?",
-        help="Path to the output file (filtered dat.indices). Defaults to stdout.",
-    )
-    group.add_argument(
-        "-i",
-        "--interactive",
-        action="store_true",
-        required=False,
-        help="Interactively shows plots and asks the user for thresholds. "
-        "Overrides predefined thresholds. Disabled by default.",
-    )
-    group.add_argument(
-        "-t",
-        "--thresholds",
-        nargs=2,
-        type=int,
-        required=False,
-        help="The minimum number of restriction fragments between reads to "
-        "consider loops and uncut events. Estimated automatically by default. "
-        "Must be two integers separated by a space (-t <loop> <uncut>).",
-    )
-    parser.add_argument(
-        "-F",
-        "--frags",
-        type=str,
-        required=True,
-        help="Path to bed file containing the sorted list of fragments, with "
-        "fields: chr start end.",
-    )
-    parser.add_argument(
-        "-p",
-        "--plot_summary",
-        required=False,
-        action="store_true",
-        default=False,
-        help="Output a piechart summarizing library composition.",
-    )
-    return parser.parse_args()
-
-
 def process_read_pair(line):
     """
     Takes a read pair (line) from a 2D BED file as input, reorders the pair

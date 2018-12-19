@@ -7,24 +7,28 @@ Simple Hi-C pipeline for generating and manipulating contact matrices.
 
 usage:
     hicstuff [-hv] <command> [<args>...]
+
 options:
     -h, --help                  shows the help
     -v, --version               shows the version
+
 The subcommands are:
-    filter      filters Hi-C pairs to exclude spurious events
-    digest      digest genome into a list of fragments
     iteralign   iteratively aligns reads to a reference genome
+    digest      digest genome into a list of fragments
+    filter      filters Hi-C pairs to exclude spurious events
     view        visualize a Hi-C matrix
     pipeline    Hi-C pipeline to generate contact matrix from fastq files
 """
 
 from docopt import docopt
 from docopt import DocoptExit
+import pdb
+import hicstuff.commands as commands
+from hicstuff.version import __version__
 
-import commands
 
-if __name__ == "__main__":
-    args = docopt(__doc__, version="1.0.0", options_first=True)
+def main():
+    args = docopt(__doc__, version=__version__, options_first=True)
     # Retrieve the command to execute.
     command_name = args.pop("<command>").capitalize()
 
@@ -42,9 +46,11 @@ if __name__ == "__main__":
     except AttributeError:
         print("Unknown command.")
         raise DocoptExit()
-
     # Create an instance of the command.
-    command = command_lass(command_args, args)
-
+    command = command_class(command_args, args)
     # Execute the command.
     command.execute()
+
+
+if __name__ == "__main__":
+    main()
