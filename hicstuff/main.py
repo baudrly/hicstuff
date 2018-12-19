@@ -36,7 +36,6 @@ def main():
     command_args = args.pop("<args>")
     if command_args is None:
         command_args = {}
-
     # After 'popping' '<command>' and '<args>', what is left in the
     # args dictionary are the global arguments.
 

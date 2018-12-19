@@ -8,7 +8,7 @@ from hicstuff.fraglist import write_frag_info, write_sparse_matrix
 from hicstuff.filter import get_thresholds, filter_events, process_read_pair
 from hicstuff.vizmap import load_raw_matrix, raw_cols_to_sparse, sparse_to_dense, plot_matrix
 from re import findall
-import sys
+import sys, os
 import shutil as st
 import pdb
 
@@ -20,7 +20,6 @@ class AbstractCommand:
 
     def __init__(self, command_args, global_args):
         """Initialize the commands"""
-        print(command_args, global_args)
         self.args = docopt(self.__doc__, argv=command_args)
         self.global_args = global_args
 
@@ -71,30 +70,33 @@ class Iteralign(AbstractCommand):
 class Digest(AbstractCommand):
     """
     Digests a fasta file into fragments based on a restriction enzyme or a
-    fixed chunk size. Generates two output files: info_contigs.txt and fragments_list.txt
+    fixed chunk size. Generates two output files into the target directory
+    named "info_contigs.txt" and "fragments_list.txt"
 
     usage:
-        hicstuff digest --enzyme ENZYME [--size=INT] [--outdir DIR] <fasta>
+        digest --enzyme=ENZYME [--size=INT] [--outdir DIR] [--circular] <fasta>
 
     arguments:
         fasta                     Fasta file to be digested
 
     options:
-        -e ENZ,  --enzyme=ENZ     A restriction enzyme or an integer representing chunk sizes (in bp)
-        -s INT,  --size=INT       Minimum size threshold to keep fragments [default: 0]
-        -o DIR,  --outdir=DIR     Directory where the fragments and contigs files will be written
+        -c, --circular           Whether the genome is circular.
+        -e ENZ, --enzyme=ENZ     A restriction enzyme or an integer representing chunk sizes (in bp)
+        -s INT, --size=INT       Minimum size threshold to keep fragments [default: 0]
+        -o DIR, --outdir=DIR     Directory where the fragments and contigs files will be written
     """
 
     def execute(self):
         if not self.args["--size"]:
             self.args["--size"] = 0
-        if not self.args["--output"]:
-            self.args["--output"] = sys.stdout
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = os.getcwd()
         write_frag_info(
-            self.args["--fasta"],
+            self.args["<fasta>"],
             self.args["--enzyme"],
             self.args["--size"],
-            output_frags=self.args["--output"],
+            output_dir=self.args["--outdir"],
+            circular=self.args["--circular"],
         )
 
 
@@ -113,10 +115,10 @@ class Filter(AbstractCommand):
         output      Path to the filtered file, in the same format as the input.
 
     options:
-        -F FILE,    --frags=FILE          BED file containing digested genome fragments
-        -i,         --interactive         Interactively shows plots and asks for thresholds.
+        -F FILE, --frags=FILE             BED file containing digested genome fragments
+        -i, --interactive                 Interactively shows plots and asks for thresholds.
         -t INT-INT, --thresholds=INT-INT  Manually defines integer values for the thresholds in the order [uncut, loop].
-        -p,         --plot_summary        If set, a plot with library composition informations will be displayed.
+        -p, --plot_summary                If set, a plot with library composition informations will be displayed.
     """
 
     def execute(self):
@@ -155,7 +157,7 @@ class View(AbstractCommand):
 
     options:
         -b INT, --binning=INT   Subsampling factor to use for binning [default: 1].
-        -n,     --normalize     Should SCN normalization be performed before rendering the matrix ?
+        -n, --normalize         Should SCN normalization be performed before rendering the matrix ?
         -m INT, --max=INT       Saturation threshold. Maximum pixel value is set to this percentile [default: 99].
         -o IMG, --output=IMG    Path where the matrix will be stored in PNG format.
     """
@@ -206,10 +208,10 @@ class Pipeline(AbstractCommand):
         fq2:             Reverse fastq file
 
     options:
-        -f, --fasta      Fasta file to be digested
-        -e, --enzyme     A restriction enzyme or an integer representing chunk sizes (in bp)
-        -s, --size       Minimum size threshold to keep fragments
-        -o, --outdir     Directory where the fragments and contigs files will be written
+        -f FILE, --fasta=FILE      Fasta file to be digested
+        -e ENZYME, --enzyme=ENZYME A restriction enzyme or an integer representing chunk sizes (in bp)
+        -s INT, --size=INT         Minimum size threshold to keep fragments
+        -o DIR, --outdir=DIR       Directory where the fragments and contigs files will be written
     """
 
     # WIP: Parse arguments in docopt instead of Bash ?
