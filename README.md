@@ -140,7 +140,7 @@ Visualize a Hi-C matrix file as a heatmap of contact frequencies. Allows to tune
 
 ### Connecting the modules
 
-All the steps described here are handled automatically when running the `hicstuff pipeline`. But if you want to connect the different modules manually, the intermediary input and output files must be processed using light bash scripting.
+All the steps described here are handled automatically when running the `hicstuff pipeline`. But if you want to connect the different modules manually, the intermediate input and output files must be processed using light bash scripting.
 
 #### Extracting contacts from the alignment
 The output from iteralign is a SAM file. In order to retrieve Hi-C pairs, you need to run iteralign separately on the two fastq files and process the resulting alignment files processed as follows using bedtools and some bash commands.
@@ -230,3 +230,10 @@ cut -f4,9 "$tmp_dir/contact_intersect_sorted.bed" |
   awk '{print $0,$1}' |
   cut -f1 --complement >> matrix.tsv
 ```
+
+### File formats
+
+* 2D BED: This is the input format for `hicstuff filter`. It has one line per Hi-C pair and the following fields for each read: **chr start end name frag_id strand**.
+* 2D bedgraph: This is an optional output format of `hicstuff pipeline` for the sparse matrix. It has two fragment per line, and the number of times they are found together. It has the following fields: **chr1, start1, end1, chr2, start2, end2, occurences**
+
+* GRAAL sparse matrix: This is a simple CSV file with 3 columns: **id_a, id_b, occurrences**. The id columns correspond to the absolute id of the restriction fragments (0-indexed).

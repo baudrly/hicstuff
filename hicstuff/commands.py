@@ -1,16 +1,14 @@
-# Based on Rémy Greinhofer (rgreinho) tutorial on subcommands in docopt
+# Structure based on Rémy Greinhofer (rgreinho) tutorial on subcommands in docopt
 # https://github.com/rgreinho/docopt-subcommands-example
 # cmdoret, 20181412
-from docopt import docopt
 from hicstuff.hicstuff import bin_sparse, normalize_sparse, bin_kb_sparse
 from hicstuff.iteralign import *
 from hicstuff.fraglist import write_frag_info, write_sparse_matrix
 from hicstuff.filter import get_thresholds, filter_events, process_read_pair
 from hicstuff.vizmap import load_raw_matrix, raw_cols_to_sparse, sparse_to_dense, plot_matrix
 from re import findall
-import sys, os
-import shutil as st
-import pdb
+import sys, os, subprocess, shutil
+from docopt import docopt
 
 
 class AbstractCommand:
@@ -64,7 +62,7 @@ class Iteralign(AbstractCommand):
             self.args["--minimap2"],
         )
         # Deletes the temporary folder
-        st.rmtree(temp_directory)
+        shutil.rmtree(temp_directory)
 
 
 class Digest(AbstractCommand):
@@ -74,25 +72,27 @@ class Digest(AbstractCommand):
     named "info_contigs.txt" and "fragments_list.txt"
 
     usage:
-        digest --enzyme=ENZYME [--size=INT] [--outdir DIR] [--circular] <fasta>
+        digest [--circular] [--size=INT] [--outdir=DIR] --enzyme=ENZ <fasta>
 
     arguments:
         fasta                     Fasta file to be digested
 
     options:
-        -c, --circular           Whether the genome is circular.
+        -c, --circular           Specify if the genome is circular.
         -e ENZ, --enzyme=ENZ     A restriction enzyme or an integer representing chunk sizes (in bp)
         -s INT, --size=INT       Minimum size threshold to keep fragments [default: 0]
-        -o DIR, --outdir=DIR     Directory where the fragments and contigs files will be written
+        -o DIR, --outdir=DIR     Directory where the fragments and contigs files will be written. Defaults to current directory.
+
     output:
-        -fragments_list.txt: information about restriction fragments (or chunks)
-        -info_contigs.txt: information about contigs or chromosomes
+        fragments_list.txt: information about restriction fragments (or chunks)
+        info_contigs.txt: information about contigs or chromosomes
 
     """
 
     def execute(self):
-        if not self.args["--size"]:
-            self.args["--size"] = 0
+        # If circular is not specified, change it from None to False
+        if not self.args["--circular"]:
+            self.args["--circular"] = False
         if not self.args["--outdir"]:
             self.args["--outdir"] = os.getcwd()
         write_frag_info(
@@ -204,19 +204,57 @@ class Pipeline(AbstractCommand):
     Entire Pipeline to process fastq files into a Hi-C matrix. Uses all the individual components of hicstuff.
 
     usage:
-        pipeline --fasta FILE --enzyme ENZYME [--size SIZE] [--outdir DIR] <fq1> <fq2>
+        pipeline [--quality_min=INT] [--duplicates] [--size=INT] [--no_cleanup]
+                 [--threads=INT] [--minimap2] [--bedgraph] [--prefix=PREFIX]
+                 [--tmp=DIR] [--iterative] [--outdir=DIR] [--filter]
+                 [--enzyme=ENZ] --fasta=FILE <fq1> <fq2>
 
     arguments:
         fq1:             Forward fastq file
         fq2:             Reverse fastq file
 
     options:
-        -f FILE, --fasta=FILE      Fasta file to be digested
-        -e ENZYME, --enzyme=ENZYME A restriction enzyme or an integer representing chunk sizes (in bp)
-        -s INT, --size=INT         Minimum size threshold to keep fragments
-        -o DIR, --outdir=DIR       Directory where the fragments and contigs files will be written
+        -e ENZ, --enzyme=ENZ       Restriction enzyme if a string, or chunk size (i.e. resolution) if a number. [default: 5000]
+        -f FILE, --fasta=FILE      Reference genome to map against in FASTA format
+        -o DIR, --outdir=DIR       Output directory. Defaults to the current directory.
+        -P PREFIX, --prefix=PREFIX Overrides default GRAAL-compatible filenames and use a prefix with extensions instead.
+        -q INT, --quality_min=INT  Minimum mapping quality for selecting contacts. [default: 30].
+        -d, --duplicates:          If enabled, trims (10bp) adapters and PCR duplicates prior to mapping. Not enabled by default.
+        -s INT, --size=INT         Minimum size threshold to consider contigs. Keep all contigs by default. [default: 0]
+        -n, --no-clean-up          If enabled, intermediary BED files will be kept after generating the contact map. Disabled by defaut.
+        -b, --bedgraph             If enabled, generates a sparse matrix in 2D Bedgraph format (cooler-compatible) instead of GRAAL-compatible format.
+        -t INT, --threads=INT      Number of threads to allocate. [default: 1].
+        -T DIR, --tmp=DIR          Directory for storing intermediary BED files and temporary sort files. Defaults to the output directory.
+        -m, --minimap2             Use the minimap2 aligner instead of bowtie2. Not enabled by default.
+        -i, --iterative            Map reads iteratively using hicstuff iteralign, by truncating reads to 20bp and then repeatedly extending and aligning them.
+        -F, --filter               Filter out spurious 3C events (loops and uncuts) using hicstuff filter. Requires -e to be a restriction enzyme, not a chunk size.
+        -C, --circular             Enable if the genome is circular.
+        -h, --help                 Display this help message.
+
+    output:
+        abs_fragments_contacts_weighted.txt: the sparse contact map
+        fragments_list.txt: information about restriction fragments (or chunks)
+        info_contigs.txt: information about contigs or chromosomes
     """
 
-    # WIP: Parse arguments in docopt instead of Bash ?
     def execute(self):
-        pass
+        if not self.args["--outdir"]:
+            self.args["--outdir"] = os.getcwd()
+        str_args = " "
+        # Pass formatted arguments to bash
+        for arg, val in self.args.items():
+            # Handle positional arguments individually
+            if arg == "<fq1>":
+                str_args += "-1 " + val
+            elif arg == "<fq2>":
+                str_args += "-2 " + val
+            # Ignore value of flags (only add name)
+            elif val == True:
+                str_args += arg
+            # Skip flags that are not specified
+            elif val in (None, False):
+                continue
+            else:
+                str_args += arg + " " + val
+            str_args += " "
+        subprocess.call("bash scripts/yahcp" + str_args, shell=True)

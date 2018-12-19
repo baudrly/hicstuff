@@ -7,7 +7,6 @@
 #it relies on to perform some of the GRAAL-specific stuff like matrix/fragment data
 #file generation.
 
-current_dir="$(cd "$(dirname "$0")" && pwd)"
 arguments=()
 # default output filenames
 frag_out="fragments_list.txt"
@@ -18,8 +17,8 @@ trigger_help=0
 
 #Defaults
 enzyme=5000
-output_dir=$current_dir
 quality_min=30
+output_dir="."
 bedgraph=0
 size=0
 duplicate=0
@@ -131,49 +130,6 @@ set -o pipefail
 
 set -- "${arguments[@]}"
 
-#Hopefully useful help message if one of the mandatory parameters is missing
-if [ -z "$reads_for" ] || [ -z "$reads_rev" ] || [ -z "$fasta" ] || [ "$trigger_help" -eq 1 ]; then
-  echo """
-       yahcp (Yet Another Hi-C Pipeline) - A simple and relatively painless Hi-C data processing pipeline
-
-       Usage: yachp -1 reads_forward.fastq -2 reads_reverse.fastq -f genome.fa [-s size] [-o output_directory] [-e enzyme] [-q quality_min] [--duplicates] [--clean-up] [--filter] [--bedgraph]
-
-       Generate a sparse, GRAAL-compatible contact map from paired-end reads and a reference genome (for more information about GRAAL, see https://github.com/koszullab/GRAAL).
-       The map can also be easily visualized with HiC-Box (see https://github.com/koszullab/HiC-Box).
-       Information about fragments and contigs/chromosomes are stored in separate files.
-       The genome can either be partitioned by restriction fragments (specifying the enzyme) or fixed size chunks (specifying a number).
-
-       Requires bowtie2, samtools, bedtools and python (with Biopython installed) to run. Optionally, minimap2 can be used instead of bowtie2 if specified.
-
-       Parameters:
-
-           -1 or --forward: Forward FASTQ reads
-           -2 or --reverse: Reverse FASTQ reads
-           -f or --fasta: Reference genome to map against in FASTA format
-           -o or --output: Output directory. Defaults to the current directory.
-           -P or --prefix: Overrides default GRAAL-compatible filenames and use a prefix with extensions instead.
-           -e or --enzyme: Restriction enzyme if a string, or chunk size (i.e. resolution) if a number. Defaults to 5000 bp chunks.
-           -q or --quality-min: Minimum mapping quality for selecting contacts. Defaults to 30.
-           -d or --duplicates: If enabled, trims (10bp) adapters and PCR duplicates prior to mapping. Not enabled by default.
-           -s or --size: Minimum size threshold to consider contigs. Defaults to 0 (keep all contigs).
-           -n or --no-clean-up: If enabled, intermediary BED files will be kept after generating the contact map. Disabled by defaut.
-           -b or --bedgraph: If enabled, generates a sparse matrix in 2D Bedgraph format (cooler-compatible) instead of GRAAL-compatible format.
-           -P or --prefix: Overrides default GRAAL filenames and use a prefix with extensions instead. Only works in combination with -b.
-           -t or --threads: Number of threads to use for the aligner and samtools. Defaults to 1.
-           -T or --tmp: Directory for storing intermediary BED files and temporary sort files. Defaults to the output directory.
-           -m or --minimap: Use the minimap2 aligner instead of bowtie2. Not enabled by default.
-           -i or --iterative: Map reads iteratively, by truncating reads to 20bp and then repeatedly extending and aligning them.
-           -F or --filter: Filter out spurious 3C events (loops and uncuts). Requires -e to be a restriction enzyme, not a chunk size.
-           -h or --help: Display this help message.
-
-       The expected files in the output directory will take the form:
-           -abs_fragments_contacts_weighted.txt: the sparse contact map
-           -fragments_list.txt: information about restriction fragments (or chunks)
-           -info_contigs.txt: information about contigs or chromosomes
-    """
-  exit 1
-fi
-
 # Check everything's in place
 python3 -c "import Bio" >/dev/null 2>&1 || {
   echo "Error! Biopython is missing from your python libraries. Please install it (using either your package manager or pip)"
@@ -205,8 +161,7 @@ mkdir -p "$tmp_dir"
 
 # Write fragments_list.txt info_contigs.txt
 echo "Writing fragment information..."
-hicstuff digest --fasta "$fasta" --enzyme "$enzyme" \
-  --output-dir "$output_dir" --size "$size""$circular"
+hicstuff digest $circular --enzyme "$enzyme" --outdir "$output_dir" --size "$size" "$fasta"
 
 # Remove adapters and PCR duplicates
 if [ $duplicate -eq 1 ]; then
@@ -351,10 +306,6 @@ else
     mv "${output_dir}/${matrix_out}" "${output_dir}/${prefix}.mat.bg2"
   fi
 fi
-
-# fraglist --intersection "$tmp_dir"/contact_intersect_sorted.bed \
-#  --frags "$output_dir"/fragments_list.txt \
-#  --output-dir "$output_dir"
 
 if [ $clean_up -eq 1 ]; then
   rm "$sam_for" "$sam_rev"
