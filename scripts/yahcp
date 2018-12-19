@@ -7,22 +7,29 @@
 #it relies on to perform some of the GRAAL-specific stuff like matrix/fragment data
 #file generation.
 
-current_dir="$(cd "$(dirname "$0")" && pwd)"
 arguments=()
+# default output filenames
+frag_out="fragments_list.txt"
+contig_out="info_contigs.txt"
+matrix_out="abs_fragments_contacts_weighted.txt"
 
 trigger_help=0
 
 #Defaults
 enzyme=5000
-output_dir=$current_dir
 quality_min=30
+output_dir="."
+bedgraph=0
 size=0
 duplicate=0
 clean_up=1
 threads=1
 minimap=0
 circular=""
+iterative=0
+filter_events=0
 tmp_dir=$output_dir
+prefix=""
 
 #Argument parsing
 while [[ $# -gt 0 ]]; do
@@ -30,79 +37,91 @@ while [[ $# -gt 0 ]]; do
   key="$1"
 
   case $key in
-    -1 | --forward)
-      reads_for="$2"
-      shift
-      shift
-      ;;
-    -2 | --reverse)
-      reads_rev="$2"
-      shift
-      shift
-      ;;
-    -f | --fasta)
-      fasta="$2"
-      shift
-      shift
-      ;;
-    -e | --enzyme)
-      enzyme="$2"
-      shift
-      shift
-      ;;
-    -o | --output)
-      output_dir="$2"
-      shift
-      shift
-      ;;
-    -q | --quality-min)
-      quality_min="$2"
-      shift
-      shift
-      ;;
-    -s | --size)
-      size="$2"
-      shift
-      shift
-      ;;
-    -t | --threads)
-      threads="$2"
-      shift
-      shift
-      ;;
-    -T | --tmp)
-      tmp_dir="$2"
-      shift
-      shift
-      ;;
-    -m | --minimap | --minimap2)
-      minimap=1
-      shift
-      ;;
-    -p | --pos-matrix)
-      posmat=1
-      shift
-      ;;
-    -d | --duplicates)
-      duplicate=1
-      shift
-      ;;
-    -n | --no-clean-up)
-      clean_up=0
-      shift
-      ;;
-    -C | --circular)
-      circular=" --circular"
-      shift
-      ;;
-    -h | --help)
-      trigger_help=1
-      shift
-      ;;
-    *)
-      arguments+=("$1")
-      shift
-      ;;
+  -1 | --forward)
+    reads_for="$2"
+    shift
+    shift
+    ;;
+  -2 | --reverse)
+    reads_rev="$2"
+    shift
+    shift
+    ;;
+  -f | --fasta)
+    fasta="$2"
+    shift
+    shift
+    ;;
+  -e | --enzyme)
+    enzyme="$2"
+    shift
+    shift
+    ;;
+  -o | --output)
+    output_dir="$2"
+    shift
+    shift
+    ;;
+  -q | --quality-min)
+    quality_min="$2"
+    shift
+    shift
+    ;;
+  -s | --size)
+    size="$2"
+    shift
+    shift
+    ;;
+  -t | --threads)
+    threads="$2"
+    shift
+    shift
+    ;;
+  -T | --tmp)
+    tmp_dir="$2"
+    shift
+    shift
+    ;;
+  -m | --minimap | --minimap2)
+    minimap=1
+    shift
+    ;;
+  -b | --bedgraph)
+    bedgraph=1
+    shift
+    ;;
+  -d | --duplicates)
+    duplicate=1
+    shift
+    ;;
+  -n | --no-clean-up)
+    clean_up=0
+    shift
+    ;;
+  -C | --circular)
+    circular=" --circular"
+    shift
+    ;;
+  -i | --iterative)
+    iterative=1
+    shift
+    ;;
+  -F | --filter)
+    filter_events=1
+    shift
+    ;;
+  -P | --prefix)
+    prefix="$2"
+    shift
+    ;;
+  -h | --help)
+    trigger_help=1
+    shift
+    ;;
+  *)
+    arguments+=("$1")
+    shift
+    ;;
   esac
 done
 
@@ -111,46 +130,7 @@ set -o pipefail
 
 set -- "${arguments[@]}"
 
-#Hopefully useful help message if one of the mandatory parameters is missing
-if [ -z "$reads_for" ] || [ -z "$reads_rev" ] || [ -z "$fasta" ] || [ "$trigger_help" -eq 1 ]; then
-  echo """
-       yahcp (Yet Another Hi-C Pipeline) - A simple and relatively painless Hi-C data processing pipeline
-
-       Usage: yachp -1 reads_forward.fastq -2 reads_reverse.fastq -f genome.fa [-s size] [-o output_directory] [-e enzyme] [-q quality_min] [--duplicates] [--clean-up]
-
-       Generate a sparse, GRAAL-compatible contact map from paired-end reads and a reference genome (for more information about GRAAL, see https://github.com/koszullab/GRAAL).
-       The map can also be easily visualized with HiC-Box (see https://github.com/koszullab/HiC-Box).
-       Information about fragments and contigs/chromosomes are stored in separate files.
-       The genome can either be partitioned by restriction fragments (specifying the enzyme) or fixed size chunks (specifying a number).
-
-       Requires bowtie2, samtools, bedtools and python (with Biopython installed) to run. Optionally, minimap2 can be used instead of bowtie2 if specified.
-
-       Parameters:
-
-           -1 or --forward: Forward FASTQ reads
-           -2 or --reverse: Reverse FASTQ reads
-           -f or --fasta: Reference genome to map against in FASTA format
-           -o or --output: Output directory. Defaults to the current directory.
-           -e or --enzyme: Restriction enzyme if a string, or chunk size (i.e. resolution) if a number. Defaults to 5000 bp chunks.
-           -q or --quality-min: Minimum mapping quality for selecting contacts. Defaults to 30.
-           -d or --duplicates: If enabled, removes adapters and PCR duplicates prior to mapping. Not enabled by default.
-           -s or --size: Minimum size threshold to consider contigs. Defaults to 0 (keep all contigs).
-           -n or --no-clean-up: If enabled, intermediary BED files will be kept after generating the contact map. Disabled by defaut.
-           -p or --pos-matrix: If enabled, generates a sparse matrix with positions (chr,pos) instead of GRAAL-compatible format.
-           -t or --threads: Number of threads to use for the aligner and samtools. Defaults to 1.
-           -T or --tmp: Directory for storing intermediary BED files and temporary sort files. Defaults to the output directory.
-           -m or --minimap: Use the minimap2 aligner instead of bowtie2. Not enabled by default.
-           -h or --help: Display this help message.
-
-       The expected files in the output directory will take the form:
-           -abs_fragments_contacts_weighted.txt: the sparse contact map
-           -fragments_list.txt: information about restriction fragments (or chunks)
-           -info_contigs.txt: information about contigs or chromosomes
-    """
-  exit 1
-fi
-
-#Check everything's in place
+# Check everything's in place
 python3 -c "import Bio" >/dev/null 2>&1 || {
   echo "Error! Biopython is missing from your python libraries. Please install it (using either your package manager or pip)"
   exit 1
@@ -162,6 +142,11 @@ else
   aligner=minimap2
 fi
 
+if [[ "$enzyme" =~ "^[0-9]+$" ]] && [ "$filter_events" -eq 1 ]; then
+  echo "A restriction enzyme must be specified to filter 3C events."
+  exit 1
+fi
+
 for tool in $aligner samtools bedtools fraglist; do
   command -v $tool >/dev/null 2>&1 || {
     echo "Error! $tool is needed and could not be found on your machine."
@@ -169,26 +154,16 @@ for tool in $aligner samtools bedtools fraglist; do
   }
 done
 
-index=${fasta%.fa}
 t=$((threads / 2 < 1 ? 1 : threads / 2))
 
 mkdir -p "$output_dir"
 mkdir -p "$tmp_dir"
 
-#Write fragments_list.txt info_contigs.txt
+# Write fragments_list.txt info_contigs.txt
 echo "Writing fragment information..."
-fraglist --fasta "$fasta" --enzyme "$enzyme" --output-dir "$output_dir" --size "$size""$circular"
+hicstuff digest $circular --enzyme "$enzyme" --outdir "$output_dir" --size "$size" "$fasta"
 
-#Build fasta index files
-
-if [ $minimap -eq 0 ]; then
-  if [ ! -f "${index}".1.bt2 ]; then
-    echo "Building fasta index files..."
-    bowtie2-build --quiet "$fasta" "$index"
-  fi
-fi
-
-#Remove adapters and PCR duplicates
+# Remove adapters and PCR duplicates
 if [ $duplicate -eq 1 ]; then
   echo "Removing adapters and PCR duplicates..."
 
@@ -197,7 +172,7 @@ if [ $duplicate -eq 1 ]; then
     exit 1
   }
 
-  perl "$current_dir"/pcr_duplicate_Hiseq20.pl "$reads_for" "$reads_rev" "$reads_for".trimmed "$reads_rev".trimmed
+  pcr_duplicates "$reads_for" "$reads_rev" "$reads_for".trimmed "$reads_rev".trimmed
   reads_for=${reads_for}.trimmed
   reads_rev=${reads_rev}.trimmed
 fi
@@ -208,23 +183,38 @@ fi
 # 3/ convert to bed
 # 4/ keep relevant fields (chromosome/contig, starting position, end position, read name, orientation)
 # 5/ sort by chromosome/contig (#1 in dict order) then by position (#2 in numerical order)
+
 echo "Performing alignment and generating bed files..."
-if [ $minimap -eq 0 ]; then
-  alignment_instruction_for="bowtie2 --very-sensitive-local -p $t -x $index -U $reads_for"
-  alignment_instruction_rev="bowtie2 --very-sensitive-local -p $t -x $index -U $reads_rev"
+# Map reads iteratively
+if [ $iterative -eq 1 ]; then
+  # Conditionaly append minimap option flag to command
+  [ $minimap -eq 1 ] && miniflag="-m"
+  map_cmd() { hicstuff iteralign -f "$fasta" -t $t -o $2 -T "$tmp_dir" "$miniflag" $1; }
 else
-  alignment_instruction_for="minimap2 -2 -t $t -ax sr $fasta $reads_for"
-  alignment_instruction_rev="minimap2 -2 -t $t -ax sr $fasta $reads_rev"
+  if [ $minimap -eq 0 ]; then
+    #Build fasta index files if they don't exist
+    index=${fasta%.fa}
+    if [ ! -f "${index}".1.bt2 ]; then
+      echo "Building fasta index files..."
+      bowtie2-build --quiet "$fasta" "$index"
+    fi
+    map_cmd() { bowtie2 --very-sensitive-local -p $t -x "$index" -U "$1" >"$2"; }
+  else
+    map_cmd() { minimap2 -2 -t $t -ax sr "$fasta" "$1" >"$2"; }
+  fi
 fi
 
-$alignment_instruction_for |
-  samtools view -bS -F 260 -@ $t -q "$quality_min" - |
+sam_for="$tmp_dir/for.sam"
+sam_rev="$tmp_dir/rev.sam"
+map_cmd "$reads_for" "$sam_for"
+map_cmd "$reads_rev" "$sam_rev"
+
+samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_for" |
   bedtools bamtobed -i - |
   awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
     >"$tmp_dir"/unsorted_contacts_for.bed &
 
-$alignment_instruction_rev |
-  samtools view -bS -F 260 -@ $t -q "$quality_min" - |
+samtools view -bS -F 260 -@ $t -q "$quality_min" "$sam_rev" |
   bedtools bamtobed -i - |
   awk 'OFS="\t" { print $1,$2,$3,$4,$6 }' \
     >"$tmp_dir"/unsorted_contacts_rev.bed &
@@ -234,28 +224,91 @@ wait
 # Check if version of UNIX sort supports parallelization and add flag if it does
 sort_par=""
 par=$(sort --version | awk 'NR==1 {if($NF > 8.23) {print 1} else {print 0}}')
-if [ "$par" -eq 1 ]; then
-  sort_par="--parallel=$t"
-fi
+[ "$par" -eq 1 ] && sort_par="--parallel=$threads"
 
-sort -S 2G "${sort_par}" -T "$tmp_dir" -k1,1d -k2,2n "$tmp_dir"/unsorted_contacts_for.bed "$tmp_dir"/unsorted_contacts_rev.bed \
+# Sort all forward and reverse reads by name into a single bed
+sort -S 2G "${sort_par}" -T "$tmp_dir" -k1,1d -k2,2n \
+  "$tmp_dir"/unsorted_contacts_for.bed \
+  "$tmp_dir"/unsorted_contacts_rev.bed \
   >"$tmp_dir"/total_contacts.bed
 
-#Make a bed out of fragments_list.txt
-awk 'NR>1 { print $2"\t"$3"\t"$4 }' "$output_dir"/fragments_list.txt >"$tmp_dir"/fragments_list.bed
+# Make a bed out of fragments_list.txt with 0-based fragment index for GRAAL
+awk 'NR>1 { print $2"\t"$3"\t"$4"\t"(NR-2) }' \
+  "$output_dir"/fragments_list.txt >"$tmp_dir"/fragments_list.bed
 
-#Intersect fragment list with mapping data
+# Awk code that transforms input bed file *sorted on Rname* with fields:
+#     Rchr Rstart Rend Rname Rstrand Fchr Fstart Fend Fidx
+# where R=read and F=fragment
+# into a paired bed file with fields:
+#     F1chr F1start F1end F1idx R1strand F2chr F2start F2end F2idx R2strand
+# Where F1 and F2 are fragments of the reads R1 and R2 in a Hi-C pair
+bed2pairs='
+BEGIN{dir="for"; OFS="\t"}
+{
+  if(dir=="for") {
+    fw["name"]=$4; fw["coord"]=$6"\t"$7"\t"$8"\t"$9"\t"$5; dir="rev" }
+  else {
+    if(fw["name"] == $4) {
+        print fw["coord"],$6,$7,$8,$9,$5; dir="for"}
+    else {
+        dir="rev"; fw["coord"]=$6"\t"$7"\t"$8"\t"$9"\t"$5; fw["name"]=$4}
+    }
+}
+'
+
+# Intersect fragment list with mapping data
 echo "Intersecting bed files..."
-bedtools intersect -a "$tmp_dir"/total_contacts.bed -b "$tmp_dir"/fragments_list.bed -wa -wb |
-  awk 'OFS="\t" { print $1,$2,$3,$4,$5,$(NF-2),$(NF-1),$NF }' |
-  sort -k4d -S 2G ${sort_par} -T "$tmp_dir" \
+bedtools intersect -a "$tmp_dir"/total_contacts.bed \
+  -b "$tmp_dir"/fragments_list.bed -wa -wb |
+  sort -k4d -S 2G ${sort_par} -T "$tmp_dir" |
+  awk "$bed2pairs" \
     >"$tmp_dir"/contact_intersect_sorted.bed
 
-# Write GRAAL matrix out of intersecting bed file
+# Filter spurious (loops and uncuts) 3C events
+if [ "$filter_events" -eq 1 ]; then
+  filter3C -i --frags "$tmp_dir"/fragments_list.bed \
+    "$tmp_dir/contact_intersect_sorted.bed" \
+    "$tmp_dir/contacts.filtered.bed" &&
+    mv "$tmp_dir/contacts.filtered.bed" "$tmp_dir/contact_intersect_sorted.bed"
+fi
+
 echo "Generating contact map..."
-fraglist --intersection "$tmp_dir"/contact_intersect_sorted.bed --frags "$output_dir"/fragments_list.txt --output-dir "$output_dir" ${posmat:+-p}
+# Write GRAAL matrix out of intersecting bed file
+if [ "$bedgraph" -eq 0 ]; then
+  echo -e "id_fragment_a\tid_fragment_b\tn_contact" >"$output_dir/$matrix_out"
+  cut -f4,9 "$tmp_dir/contact_intersect_sorted.bed" |
+    sort -V |
+    uniq -c |
+    sed 's/^\s*//' |
+    tr ' ' '\t' |
+    awk '{print $0,$1}' |
+    cut -f1 --complement >>"$output_dir/$matrix_out"
+  if [ ! -z "$prefix" ]; then
+    echo """
+      Cannot use a prefix in default mode. Filenames are kept default for GRAAL
+      compatibility. If you do not need the GRAAL format, you can use -b to
+      output the matrix in 2D bedgraph instead.
+      """
+  fi
+# Write 2D bedgraph matrix
+else
+  cut -f4,5,9,10 --complement "$tmp_dir/contact_intersect_sorted.bed" |
+    sort -V |
+    uniq -c |
+    sed 's/^\s*//' |
+    tr '' '\t' |
+    awk '{print $0,$1}' |
+    cut -f1 --complement |
+    tr '\t' ' ' >"${output_dir}/${matrix_out}"
+  if [ ! -z "$prefix" ]; then
+    mv "${output_dir}/${contig_out}" "${output_dir}/${prefix}.chr.txt"
+    mv "${output_dir}/${frag_out}" "${output_dir}/${prefix}.frag.bed"
+    mv "${output_dir}/${matrix_out}" "${output_dir}/${prefix}.mat.bg2"
+  fi
+fi
 
 if [ $clean_up -eq 1 ]; then
+  rm "$sam_for" "$sam_rev"
   rm "$tmp_dir"/fragments_list.bed
   rm "$tmp_dir"/unsorted_contacts_for.bed
   rm "$tmp_dir"/unsorted_contacts_rev.bed

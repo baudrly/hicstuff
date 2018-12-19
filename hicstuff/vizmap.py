@@ -36,17 +36,14 @@ except ImportError:
     pass
 
 try:
-    import hicstuff as hcs
+    import hicstuff.hicstuff as hcs
 except ImportError:
     print("Warning, hicstuff was not found - normalizations won't work")
 
-VERSION_NUMBER = "0.1a"
 DEFAULT_DPI = 500
 DEFAULT_SATURATION_THRESHOLD = 99
 
-load_raw_matrix = functools.partial(
-    np.genfromtxt, skip_header=True, dtype=np.float64
-)
+load_raw_matrix = functools.partial(np.genfromtxt, skip_header=True, dtype=np.float64)
 
 
 def raw_cols_to_sparse(M):
@@ -66,19 +63,7 @@ def sparse_to_dense(M):
     return E
 
 
-def plot_matrix(M, filename, vmax=99):
-
-    del filename
-    plt.figure()
-    plt.imshow(
-        M, vmax=np.percentile(M, vmax), cmap="Reds", interpolation="none"
-    )
-    plt.colorbar()
-    plt.axis("off")
-    plt.show()
-
-
-def save_matrix(array, filename, vmax=None, dpi=DEFAULT_DPI):
+def plot_matrix(array, filename, vmax=None, dpi=DEFAULT_DPI):
     """A function that performs all the tedious matplotlib
     magic to draw a 2D array with as few parameters and
     as little whitespace as possible.
@@ -88,11 +73,11 @@ def save_matrix(array, filename, vmax=None, dpi=DEFAULT_DPI):
 
     if vmax is None:
         vmax = np.percentile(array, DEFAULT_SATURATION_THRESHOLD)
-    plt.gca().set_axis_off()
-    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-    plt.margins(0, 0)
-    plt.gca().xaxis.set_major_locator(plt.NullLocator())
-    plt.gca().yaxis.set_major_locator(plt.NullLocator())
+    # plt.gca().set_axis_off()
+    # plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    # plt.margins(0, 0)
+    # plt.gca().xaxis.set_major_locator(plt.NullLocator())
+    # plt.gca().yaxis.set_major_locator(plt.NullLocator())
     plt.figure()
     if SEABORN:
         sns.heatmap(array, vmax=vmax, cmap="Reds")
@@ -100,8 +85,11 @@ def save_matrix(array, filename, vmax=None, dpi=DEFAULT_DPI):
         plt.imshow(array, vmax=vmax, cmap="Reds", interpolation="none")
         plt.colorbar()
     plt.axis("off")
-    plt.savefig(filename, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
-    plt.close()
+    if filename:
+        plt.savefig(filename, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
+        del filename
+    else:
+        plt.show()
 
 
 def normalize(M, norm="SCN"):
@@ -111,41 +99,3 @@ def normalize(M, norm="SCN"):
         return hcs.normalize_sparse(M, norm=norm)
     except NameError:
         return M
-
-
-def main():
-
-    arguments = docopt.docopt(__doc__, version=VERSION_NUMBER)
-
-    input_map = arguments["<contact_map>"]
-    binning = int(arguments["--binning"])
-    normalized = arguments["--normalize"]
-    vmax = float(arguments["--max"])
-
-    output_file = arguments["--output"]
-
-    process_matrix = save_matrix
-    if not output_file or output_file == "output.png":
-        process_matrix = plot_matrix
-
-    raw_map = load_raw_matrix(input_map)
-
-    sparse_map = raw_cols_to_sparse(raw_map)
-
-    if normalized:
-        sparse_map = hcs.normalize_sparse(sparse_map, norm="SCN")
-
-    if binning > 1:
-        binned_map = hcs.bin_sparse(M=sparse_map, subsampling_factor=binning)
-    else:
-        binned_map = sparse_map
-
-    try:
-        dense_map = sparse_to_dense(binned_map)
-        process_matrix(dense_map, filename=output_file, vmax=vmax)
-    except MemoryError:
-        print("Contact map is too large to load, try binning more")
-
-
-if __name__ == "__main__":
-    main()

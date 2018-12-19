@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding: utf-8
 
 """
@@ -36,7 +36,6 @@ def write_frag_info(
     """Write the fragments_list.txt and info_contigs.txt that are necessary
     for GRAAL to run
     """
-
     try:
         my_enzyme = RestrictionBatch([enzyme]).get(enzyme)
     except ValueError:
@@ -53,7 +52,7 @@ def write_frag_info(
 
     with open(info_contigs_path, "w") as info_contigs:
 
-        info_contigs.write("contig\tlength_kb\tn_frags\tcumul_length\n")
+        info_contigs.write("contig\tlength\tn_frags\tcumul_length\n")
 
         with open(frag_list_path, "w") as fragments_list:
 
@@ -72,8 +71,7 @@ def write_frag_info(
                 except AttributeError:
                     n = len(my_seq)
                     my_frags = (
-                        my_seq[i : min(i + my_enzyme, n)]
-                        for i in range(0, len(my_seq), my_enzyme)
+                        my_seq[i : min(i + my_enzyme, n)] for i in range(0, len(my_seq), my_enzyme)
                     )
                 n_frags = 0
 
@@ -122,7 +120,7 @@ def write_sparse_matrix(
     fragments_list=DEFAULT_SPARSE_MATRIX_FILE_NAME,
     output_file=DEFAULT_SPARSE_MATRIX_FILE_NAME,
     output_dir=None,
-    pos_matrix=False,
+    bedgraph=False,
 ):
     """Generate a GRAAL-compatible sparse matrix from a sorted intersection
     BED file.
@@ -227,7 +225,7 @@ def write_sparse_matrix(
     print("Done.")
 
     print("Writing sparse matrix...")
-    if pos_matrix:
+    if bedgraph:
         # Get reverse mapping between fragments ids and pos
         positions_and_ids = {id: pos for pos, id in list(ids_and_positions.items())}
 
@@ -249,9 +247,7 @@ def write_sparse_matrix(
             for id_pair in sorted(contacts):
                 id_fragment_a, id_fragment_b = id_pair
                 nb_contacts = contacts[id_pair]
-                line_to_write = "{}\t{}\t{}\n".format(
-                    id_fragment_a, id_fragment_b, nb_contacts
-                )
+                line_to_write = "{}\t{}\t{}\n".format(id_fragment_a, id_fragment_b, nb_contacts)
                 output_handle.write(line_to_write)
 
     print("Done.")
@@ -292,10 +288,7 @@ def dade_to_GRAAL(
         print("I detected fixed size binning")
     else:
         print(
-            (
-                "Sorry, I don't understand this matrix's "
-                "binning: I read {}".format(str(bin_type))
-            )
+            ("Sorry, I don't understand this matrix's " "binning: I read {}".format(str(bin_type)))
         )
 
     header_data = [
@@ -315,20 +308,15 @@ def dade_to_GRAAL(
 
     with open(output_contigs, "w") as info_contigs:
 
-        info_contigs.write("contig\tlength_kb\tn_frags\tcumul_length\n")
+        info_contigs.write("contig\tlength\tn_frags\tcumul_length\n")
 
         cumul_length = 0
 
         for contig in collections.OrderedDict.fromkeys(contig_names):
 
-            length_kb = np.sum(frag_lengths[contig_names == contig])
+            length_tig = np.sum(frag_lengths[contig_names == contig])
             n_frags = collections.Counter(contig_names)[contig]
-            line_to_write = "%s\t%s\t%s\t%s\n" % (
-                contig,
-                length_kb,
-                n_frags,
-                cumul_length,
-            )
+            line_to_write = "%s\t%s\t%s\t%s\n" % (contig, length_tig, n_frags, cumul_length)
             info_contigs.write(line_to_write)
             cumul_length += n_frags
 
@@ -362,30 +350,22 @@ def main():
     parser.add_argument("-d", "--dade", action="store_true", help="Dade mode")
 
     parser.add_argument(
-        "-i",
-        "--intersection",
-        type=str,
-        help="Input file to process (fasta or bed file)",
+        "-i", "--intersection", type=str, help="Input file to process (fasta or bed file)"
     )
 
     parser.add_argument(
-        "-f",
-        "--fasta",
-        type=str,
-        help="Reference FASTA file to perform enzyme " "catalysis on",
+        "-f", "--fasta", type=str, help="Reference FASTA file to perform enzyme " "catalysis on"
     )
 
     parser.add_argument(
         "-F", "--frags", type=str, help="Fragments list for sparse matrix generation"
     )
 
-    parser.add_argument(
-        "-o", "--output-dir", help="Directory for output files", required=True
-    )
+    parser.add_argument("-o", "--output-dir", help="Directory for output files", required=True)
 
     parser.add_argument(
-        "-p",
-        "--pos-matrix",
+        "-b",
+        "--bedgraph",
         help="Generate position-based "
         "sparse matrix (chrA,posA\tchrB,posB\tcontacts) rather than GRAAL "
         "compatible.",
@@ -401,9 +381,7 @@ def main():
 
     parser.add_argument("-s", "--size", type=str, help="Minimum size threshold")
 
-    parser.add_argument(
-        "-C", "--circular", action="store_true", help="Genome is circular"
-    )
+    parser.add_argument("-C", "--circular", action="store_true", help="Genome is circular")
 
     args = parser.parse_args()
 
@@ -415,7 +393,7 @@ def main():
     _intersection = args.intersection
     _size = args.size
     _circular = args.circular
-    _pos_matrix = args.pos_matrix
+    _bedgraph = args.bedgraph
 
     if _intersection:
         input_file = _intersection
@@ -423,7 +401,7 @@ def main():
             intersect_sorted=input_file,
             fragments_list=_frags,
             output_dir=_output_dir,
-            pos_matrix=_pos_matrix,
+            bedgraph=_bedgraph,
         )
 
     elif _dade:
@@ -433,11 +411,7 @@ def main():
     elif _fasta:
         input_file = _fasta
         write_frag_info(
-            fasta=input_file,
-            enzyme=_enzyme,
-            size=_size,
-            circular=_circular,
-            output_dir=_output_dir,
+            fasta=input_file, enzyme=_enzyme, size=_size, circular=_circular, output_dir=_output_dir
         )
 
 
