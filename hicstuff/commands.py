@@ -35,17 +35,17 @@ class Iteralign(AbstractCommand):
     reads in a 3C library.
 
     usage:
-        hicstuff iteralign [--minimap2] [--threads=1] [--min_len=20] --out_sam=FILE --fasta=FILE <reads.fq>
+        iteralign [--minimap2] [--threads=1] [--min_len=20] --out_sam=FILE --fasta=FILE <reads.fq>
 
     arguments:
         reads.fq                Fastq file containing the reads to be aligned
 
     options:
         -f FILE, --fasta=FILE   Fasta file on which to map the reads.
-        -t INT,  --threads=INT  Number of parallel threads allocated for the alignment [default: 1].
-        -T DIR,  --tempdir=DIR  Temporary directory. Defaults to current directory.
-        -m,      --minimap2     If set, use minimap2 instead of bowtie2 for the alignment.
-        -l INT,  --min_len=INT  Length to which the reads should be truncated [default: 20].
+        -t INT, --threads=INT  Number of parallel threads allocated for the alignment [default: 1].
+        -T DIR, --tempdir=DIR  Temporary directory. Defaults to current directory.
+        -m, --minimap2     If set, use minimap2 instead of bowtie2 for the alignment.
+        -l INT, --min_len=INT  Length to which the reads should be truncated [default: 20].
         -o FILE, --out_sam=FILE Path where the alignment will be written in SAM format.
     """
 
@@ -84,6 +84,10 @@ class Digest(AbstractCommand):
         -e ENZ, --enzyme=ENZ     A restriction enzyme or an integer representing chunk sizes (in bp)
         -s INT, --size=INT       Minimum size threshold to keep fragments [default: 0]
         -o DIR, --outdir=DIR     Directory where the fragments and contigs files will be written
+    output:
+        -fragments_list.txt: information about restriction fragments (or chunks)
+        -info_contigs.txt: information about contigs or chromosomes
+
     """
 
     def execute(self):
@@ -107,7 +111,7 @@ class Filter(AbstractCommand):
     default. Can also plot 3C library statistics.
 
     usage:
-        hicstuff filter [--interactive | --thresholds INT,INT] [--plot_summary] <input> <output>
+        filter [--interactive | --thresholds INT,INT] [--plot_summary] <input> <output>
 
     arguments:
         input       2D BED file containing coordinates of Hi-C interacting pairs,
@@ -150,10 +154,10 @@ class View(AbstractCommand):
     output image to disk. If no output is specified, the output is displayed.
 
     usage:
-        hicstuff view [--binning=1] [--normalize] [--max=99] [--output=IMG] <contact_map>
+        view [--binning=1] [--normalize] [--max=99] [--output=IMG] <contact_map>
 
     arguments:
-        contact_map             Sparse contact matrix in GRAAL or 2D bedgraph format
+        contact_map             Sparse contact matrix in GRAAL format
 
     options:
         -b INT, --binning=INT   Subsampling factor to use for binning [default: 1].
@@ -172,7 +176,6 @@ class View(AbstractCommand):
             print("Please provide an integer for binning.", file=sys.stderr)
             raise
 
-        normalized = self.args["--normalize"]
         vmax = float(self.args["--max"])
 
         output_file = self.args["--output"]
@@ -181,7 +184,7 @@ class View(AbstractCommand):
 
         sparse_map = raw_cols_to_sparse(raw_map)
 
-        if normalized:
+        if self.args["--normalize"]:
             sparse_map = normalize_sparse(sparse_map, norm="SCN")
 
         if binning > 1:
@@ -201,7 +204,7 @@ class Pipeline(AbstractCommand):
     Entire Pipeline to process fastq files into a Hi-C matrix. Uses all the individual components of hicstuff.
 
     usage:
-        hicstuff pipeline --fasta FILE --enzyme ENZYME [--size SIZE] [--outdir DIR] <fq1> <fq2>
+        pipeline --fasta FILE --enzyme ENZYME [--size SIZE] [--outdir DIR] <fq1> <fq2>
 
     arguments:
         fq1:             Forward fastq file

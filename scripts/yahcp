@@ -205,7 +205,7 @@ mkdir -p "$tmp_dir"
 
 # Write fragments_list.txt info_contigs.txt
 echo "Writing fragment information..."
-fraglist --fasta "$fasta" --enzyme "$enzyme" \
+hicstuff digest --fasta "$fasta" --enzyme "$enzyme" \
   --output-dir "$output_dir" --size "$size""$circular"
 
 # Remove adapters and PCR duplicates
@@ -234,7 +234,7 @@ echo "Performing alignment and generating bed files..."
 if [ $iterative -eq 1 ]; then
   # Conditionaly append minimap option flag to command
   [ $minimap -eq 1 ] && miniflag="-m"
-  map_cmd() { iteralign -r "$fasta" -p $t -o $2 -T "$tmp_dir" "$miniflag" $1; }
+  map_cmd() { hicstuff iteralign -f "$fasta" -t $t -o $2 -T "$tmp_dir" "$miniflag" $1; }
 else
   if [ $minimap -eq 0 ]; then
     #Build fasta index files if they don't exist

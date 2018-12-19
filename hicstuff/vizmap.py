@@ -73,11 +73,11 @@ def plot_matrix(array, filename, vmax=None, dpi=DEFAULT_DPI):
 
     if vmax is None:
         vmax = np.percentile(array, DEFAULT_SATURATION_THRESHOLD)
-    plt.gca().set_axis_off()
-    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-    plt.margins(0, 0)
-    plt.gca().xaxis.set_major_locator(plt.NullLocator())
-    plt.gca().yaxis.set_major_locator(plt.NullLocator())
+    # plt.gca().set_axis_off()
+    # plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+    # plt.margins(0, 0)
+    # plt.gca().xaxis.set_major_locator(plt.NullLocator())
+    # plt.gca().yaxis.set_major_locator(plt.NullLocator())
     plt.figure()
     if SEABORN:
         sns.heatmap(array, vmax=vmax, cmap="Reds")
@@ -88,7 +88,8 @@ def plot_matrix(array, filename, vmax=None, dpi=DEFAULT_DPI):
     if filename:
         plt.savefig(filename, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
         del filename
-    plt.close()
+    else:
+        plt.show()
 
 
 def normalize(M, norm="SCN"):
