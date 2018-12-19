@@ -32,11 +32,11 @@ name = "hicstuff"
 
 MAJOR = 0
 MINOR = 1
-MAINTENANCE = 4
+MAINTENANCE = 2
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
-URL = "https://github.com/koszullab/hicstuff"
+URL = "https://github.com/baudrly/hicstuff"
 
 DESCRIPTION = __doc__.strip("\n")
 
@@ -66,5 +66,10 @@ setup(
     include_package_data=True,
     long_description_content_type="text/markdown",
     install_requires=REQUIREMENTS,
-    entry_points={"console_scripts": ["hicstuff=hicstuff.main:main"]},
+    entry_points={
+        "console_scripts": [
+            "vizmap=hicstuff.vizmap:main",
+            "fraglist=hicstuff.fraglist:main",
+        ]
+    },
 )
